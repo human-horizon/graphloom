@@ -1,0 +1,8 @@
+target/
+node_modules/
+dist/
+src-tauri/target/
+.graphloom/
+.env
+analyzers/go/graphloom-analyze
+.DS_Store

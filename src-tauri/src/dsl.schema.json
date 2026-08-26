@@ -1,0 +1,102 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Graphloom Visualization DSL",
+  "type": "object",
+  "required": ["title", "level", "nodes", "edges"],
+  "additionalProperties": false,
+  "properties": {
+    "title": { "type": "string", "minLength": 1 },
+    "level": { "enum": ["project", "file", "function"] },
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/node" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/edge" }
+    }
+  },
+  "definitions": {
+    "crossRef": {
+      "type": "object",
+      "required": ["id", "file", "label"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "file": { "type": "string", "minLength": 1 },
+        "label": { "type": "string", "minLength": 1 }
+      }
+    },
+    "sourceRef": {
+      "type": "object",
+      "required": ["file", "start_line", "end_line"],
+      "additionalProperties": false,
+      "properties": {
+        "file": { "type": "string", "minLength": 1 },
+        "start_line": { "type": "integer", "minimum": 1 },
+        "end_line": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "branch": {
+      "type": "object",
+      "required": ["condition", "target"],
+      "additionalProperties": false,
+      "properties": {
+        "condition": { "type": "string" },
+        "target": { "type": "string", "minLength": 1 }
+      }
+    },
+    "node": {
+      "type": "object",
+      "required": ["id", "kind", "label", "layer"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": {
+          "enum": ["action", "decision", "call", "input", "output", "state",
+                   "storage", "external", "loop", "error", "async", "group"]
+        },
+        "label": { "type": "string", "minLength": 1 },
+        "layer": { "enum": ["flow", "calls", "data", "state", "effects"] },
+        "source": { "anyOf": [ { "$ref": "#/definitions/sourceRef" }, { "type": "null" } ] },
+        "element_type": { "type": ["string", "null"] },
+        "symbol": { "type": ["string", "null"] },
+        "summary": { "type": ["string", "null"] },
+        "tests": {
+          "type": ["object", "null"],
+          "required": ["unit", "integration", "e2e"],
+          "additionalProperties": false,
+          "properties": {
+            "unit": { "type": "boolean" },
+            "integration": { "type": "boolean" },
+            "e2e": { "type": "boolean" }
+          }
+        },
+        "confidence": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "children": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/node" }
+        },
+        "branches": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/branch" }
+        },
+        "data_in": { "type": "array", "items": { "type": "string" } },
+        "data_out": { "type": "array", "items": { "type": "string" } },
+        "effects": { "type": "array", "items": { "type": "string" } },
+        "cross_refs": { "type": "array", "items": { "$ref": "#/definitions/crossRef" } }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["from", "to"],
+      "additionalProperties": false,
+      "properties": {
+        "from": { "type": "string", "minLength": 1 },
+        "to": { "type": "string", "minLength": 1 },
+        "label": { "type": ["string", "null"] },
+        "status": { "enum": ["verified", "inferred", null] }
+      }
+    }
+  }
+}

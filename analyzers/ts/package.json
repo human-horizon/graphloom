@@ -1,0 +1,21 @@
+{
+    "name": "@graphloom/analyzer-ts",
+    "version": "0.1.0",
+    "private": true,
+    "type": "module",
+    "bin": {
+        "graphloom-analyze-ts": "dist/analyze.js"
+    },
+    "scripts": {
+        "build": "tsc",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "ts-morph": "^27.0.2"
+    },
+    "devDependencies": {
+        "@types/node": "^22.10.2",
+        "typescript": "^5.7.2",
+        "vitest": "^2.1.8"
+    }
+}

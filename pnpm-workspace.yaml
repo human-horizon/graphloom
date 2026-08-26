@@ -1,0 +1,7 @@
+packages:
+  - analyzers/ts
+
+onlyBuiltDependencies:
+  - esbuild
+allowBuilds:
+  esbuild: true

@@ -1,0 +1,26 @@
+[package]
+name = "graphloom"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "graphloom_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+walkdir = "2"
+reqwest = { version = "0.12", features = ["json"] }
+tokio = { version = "1", features = ["full"] }
+chrono = "0.4"
+anyhow = "1"
+dirs = "5"
+dotenvy = "0.15"
+jsonschema = "0.28"

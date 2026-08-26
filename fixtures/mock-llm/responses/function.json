@@ -1,0 +1,73 @@
+{
+  "title": "Flow функции CreateUser",
+  "level": "function",
+  "nodes": [
+    {
+      "id": "input-req",
+      "kind": "input",
+      "label": "Входные данные",
+      "layer": "data",
+      "source": { "file": "internal/user/user.go", "start_line": 31, "end_line": 31 },
+      "symbol": "example.com/go-sample/internal/user.CreateUser",
+      "summary": "ctx, db и сырая строка с именем"
+    },
+    {
+      "id": "parse",
+      "kind": "action",
+      "label": "Разобрать имя",
+      "layer": "flow",
+      "source": { "file": "internal/user/user.go", "start_line": 32, "end_line": 32 },
+      "symbol": "example.com/go-sample/internal/user.parseName"
+    },
+    {
+      "id": "check",
+      "kind": "decision",
+      "label": "Имя валидно?",
+      "layer": "flow",
+      "source": { "file": "internal/user/user.go", "start_line": 33, "end_line": 35 },
+      "symbol": "example.com/go-sample/internal/user.validateName",
+      "branches": [
+        { "condition": "invalid", "target": "err-invalid" },
+        { "condition": "valid", "target": "save" }
+      ]
+    },
+    {
+      "id": "err-invalid",
+      "kind": "error",
+      "label": "Ошибка валидации",
+      "layer": "flow",
+      "source": { "file": "internal/user/user.go", "start_line": 34, "end_line": 34 }
+    },
+    {
+      "id": "save",
+      "kind": "call",
+      "label": "Сохранить пользователя",
+      "layer": "calls",
+      "source": { "file": "internal/user/user.go", "start_line": 36, "end_line": 38 },
+      "symbol": "example.com/go-sample/internal/user.DB.Save",
+      "effects": ["database"]
+    },
+    {
+      "id": "notify",
+      "kind": "async",
+      "label": "Отправить welcome email",
+      "layer": "effects",
+      "source": { "file": "internal/user/user.go", "start_line": 40, "end_line": 42 },
+      "symbol": "example.com/go-sample/internal/user.sendEmail",
+      "effects": ["network"]
+    },
+    {
+      "id": "done",
+      "kind": "output",
+      "label": "Успех",
+      "layer": "data",
+      "source": { "file": "internal/user/user.go", "start_line": 47, "end_line": 47 }
+    }
+  ],
+  "edges": [
+    { "from": "input-req", "to": "parse", "label": null, "status": "verified" },
+    { "from": "parse", "to": "check", "label": null, "status": "inferred" },
+    { "from": "save", "to": "notify", "label": null, "status": "inferred" },
+    { "from": "notify", "to": "done", "label": null, "status": "inferred" }
+  ]
+}

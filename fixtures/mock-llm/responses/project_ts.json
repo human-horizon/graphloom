@@ -1,0 +1,31 @@
+{
+  "title": "Карта проекта ts-sample",
+  "level": "project",
+  "nodes": [
+    {
+      "id": "controller",
+      "kind": "group",
+      "label": "HTTP-контроллер",
+      "layer": "calls",
+      "source": { "file": "src/controller.ts", "start_line": 4, "end_line": 6 },
+      "element_type": "entrypoint",
+      "symbol": "src/controller.ts:createUserRequest",
+      "summary": "Принимает запрос и делегирует сервису",
+      "tests": { "unit": false, "integration": false, "e2e": false }
+    },
+    {
+      "id": "user-service",
+      "kind": "group",
+      "label": "Сервис пользователей",
+      "layer": "calls",
+      "source": { "file": "src/user-service.ts", "start_line": 7, "end_line": 13 },
+      "element_type": "service",
+      "symbol": "src/user-service.ts:createUser",
+      "summary": "Парсинг, валидация, сохранение и уведомление",
+      "tests": { "unit": true, "integration": false, "e2e": false }
+    }
+  ],
+  "edges": [
+    { "from": "controller", "to": "user-service", "label": "createUser", "status": "verified" }
+  ]
+}

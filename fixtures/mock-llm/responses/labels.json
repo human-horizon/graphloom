@@ -1,0 +1,168 @@
+{
+  "labels": {
+    "example.com/go-sample": {
+      "label": "Точка входа",
+      "summary": null
+    },
+    "example.com/go-sample/internal/user": {
+      "label": "Работа с пользователями",
+      "summary": null
+    },
+    "file:main.go": {
+      "label": "main.go",
+      "summary": null
+    },
+    "example.com/go-sample.main": {
+      "label": "main",
+      "summary": null
+    },
+    "file:internal/user/user.go": {
+      "label": "Работа с пользователями",
+      "summary": null
+    },
+    "example.com/go-sample/internal/user.CreateUser": {
+      "label": "Создать пользователя",
+      "summary": null
+    },
+    "example.com/go-sample/internal/user.DB": {
+      "label": "База данных",
+      "summary": null
+    },
+    "example.com/go-sample/internal/user.DB.Save": {
+      "label": "Сохранить в БД",
+      "summary": null
+    },
+    "src": {
+      "label": "Сервис пользователей",
+      "summary": null
+    },
+    "tests": {
+      "label": "Тесты",
+      "summary": null
+    },
+    "file:src/controller.ts": {
+      "label": "Контроллер",
+      "summary": null
+    },
+    "file:src/email.ts": {
+      "label": "Email",
+      "summary": null
+    },
+    "file:src/parse.ts": {
+      "label": "Парсер",
+      "summary": null
+    },
+    "file:src/save.ts": {
+      "label": "Сохранение",
+      "summary": null
+    },
+    "file:src/types.ts": {
+      "label": "Типы",
+      "summary": null
+    },
+    "file:src/user-service.ts": {
+      "label": "Сервис пользователей",
+      "summary": null
+    },
+    "file:src/validate.ts": {
+      "label": "Валидация",
+      "summary": null
+    },
+    "src/controller.ts:createUserRequest": {
+      "label": "Запрос на создание",
+      "summary": null
+    },
+    "src/email.ts:sendEmail": {
+      "label": "Отправить письмо",
+      "summary": null
+    },
+    "src/parse.ts:parseInput": {
+      "label": "Извлечь имя",
+      "summary": null
+    },
+    "src/save.ts:saveUser": {
+      "label": "Сохранить в БД",
+      "summary": null
+    },
+    "src/types.ts:User": {
+      "label": "Пользователь",
+      "summary": null
+    },
+    "src/types.ts:UserInput": {
+      "label": "Входные данные",
+      "summary": null
+    },
+    "src/user-service.ts:createUser": {
+      "label": "Создать пользователя",
+      "summary": null
+    },
+    "src/validate.ts:validateInput": {
+      "label": "Проверить имя",
+      "summary": null
+    },
+    "func:internal/user/user.go:CreateUser:11190205": {
+      "label": "Создать пользователя",
+      "summary": null
+    },
+    "func:internal/user/user.go:parseName:11189946": {
+      "label": "Извлечь имя",
+      "summary": null
+    },
+    "func:internal/user/user.go:validateName:11190000": {
+      "label": "Проверить имя",
+      "summary": null
+    },
+    "func:internal/user/user.go:sendEmail:11190063": {
+      "label": "Отправить письмо",
+      "summary": null
+    },
+    "func:internal/user/user.go:Save:11189842": {
+      "label": "Сохранить в БД",
+      "summary": null
+    },
+    "call:internal/user/user.go:parseName:11190282": {
+      "label": "Извлечь имя",
+      "summary": null
+    },
+    "if:internal/user/user.go:11190301": {
+      "label": "Имя валидно?",
+      "summary": null
+    },
+    "if:internal/user/user.go:11190383": {
+      "label": "Ошибка БД?",
+      "summary": null
+    },
+    "return:internal/user/user.go:11189932": {
+      "label": "Вернуть имя",
+      "summary": null
+    },
+    "return:internal/user/user.go:11189986": {
+      "label": "Вернуть nil",
+      "summary": null
+    },
+    "return:internal/user/user.go:11190042": {
+      "label": "Вернуть nil",
+      "summary": null
+    },
+    "return:internal/user/user.go:11190191": {
+      "label": "Вернуть ошибку",
+      "summary": null
+    },
+    "return:internal/user/user.go:11190334": {
+      "label": "Вернуть nil",
+      "summary": null
+    },
+    "return:internal/user/user.go:11190434": {
+      "label": "Вернуть ошибку БД",
+      "summary": null
+    },
+    "return:internal/user/user.go:11190613": {
+      "label": "Вернуть nil",
+      "summary": null
+    },
+    "type:internal/user/user.go:DB:11189829": {
+      "label": "База данных",
+      "summary": null
+    }
+  }
+}

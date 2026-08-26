@@ -1,0 +1,27 @@
+{
+  "title": "Диаграмма user.go",
+  "level": "file",
+  "nodes": [
+    {
+      "id": "create-user",
+      "kind": "group",
+      "label": "Создание пользователя",
+      "layer": "flow",
+      "source": { "file": "internal/user/user.go", "start_line": 31, "end_line": 48 },
+      "symbol": "example.com/go-sample/internal/user.CreateUser",
+      "summary": "Проверить, сохранить пользователя и отправить уведомление"
+    },
+    {
+      "id": "database",
+      "kind": "storage",
+      "label": "Сохранение пользователя",
+      "layer": "effects",
+      "source": { "file": "internal/user/user.go", "start_line": 11, "end_line": 15 },
+      "symbol": "example.com/go-sample/internal/user.DB.Save",
+      "summary": "Сохранить данные пользователя в базе"
+    }
+  ],
+  "edges": [
+    { "from": "create-user", "to": "database", "label": "сохраняет данные", "status": "verified" }
+  ]
+}

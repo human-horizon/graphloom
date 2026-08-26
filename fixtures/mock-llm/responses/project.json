@@ -1,0 +1,31 @@
+{
+  "title": "Карта проекта go-sample",
+  "level": "project",
+  "nodes": [
+    {
+      "id": "app-main",
+      "kind": "group",
+      "label": "Точка входа",
+      "layer": "calls",
+      "source": { "file": "main.go", "start_line": 9, "end_line": 12 },
+      "element_type": "entrypoint",
+      "symbol": "example.com/go-sample.main",
+      "summary": "main собирает зависимости и вызывает создание пользователя",
+      "tests": { "unit": false, "integration": false, "e2e": false }
+    },
+    {
+      "id": "user-pkg",
+      "kind": "group",
+      "label": "Работа с пользователями",
+      "layer": "calls",
+      "source": { "file": "internal/user/user.go", "start_line": 31, "end_line": 48 },
+      "element_type": "module",
+      "symbol": "example.com/go-sample/internal/user.CreateUser",
+      "summary": "Пакет user: парсинг, валидация, сохранение и уведомления",
+      "tests": { "unit": true, "integration": false, "e2e": false }
+    }
+  ],
+  "edges": [
+    { "from": "app-main", "to": "user-pkg", "label": "создание пользователя", "status": "verified" }
+  ]
+}
