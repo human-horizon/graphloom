@@ -241,7 +241,7 @@ export default function Reports() {
     const path = projectPath();
     if (!path) return;
     setAnalyzing(true);
-    setMessage(null);
+    setMessage({ ok: true, text: "Генерирую project map…" });
     try {
       const result = await analyzeProject(path);
       setMessage({ ok: true, text: `Project map · ${result.nodes} узлов · ${result.edges} связей` });
@@ -261,7 +261,7 @@ export default function Reports() {
     const symbolId = selectedSymbol();
     if (!path || !symbolId) return;
     setAnalyzing(true);
-    setMessage(null);
+    setMessage({ ok: true, text: "Генерирую flow функции…" });
     try {
       const result = await analyzeFunction(path, symbolId);
       setMessage({ ok: true, text: `Flow · ${result.nodes} узлов · ${result.edges} связей` });
