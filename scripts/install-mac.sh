@@ -6,9 +6,9 @@ cd "$ROOT"
 
 (cd analyzers/go && go build -o graphloom-analyze .)
 (cd analyzers/ts && pnpm install --silent && pnpm run --silent build)
+pnpm install --silent
 
 pnpm typecheck
-pnpm build
 cargo test --manifest-path src-tauri/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 pnpm tauri build --bundles app

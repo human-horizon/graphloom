@@ -3,7 +3,6 @@ import { Dynamic } from "solid-js/web";
 import { Check, ChevronDown, ChevronRight, FileCode2, FileJson, FileType, Folder, FolderOpen, Map, Network, Play, RefreshCw, X } from "lucide-solid";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
-  analyzeFile,
   analyzeFunction,
   analyzeProject,
   detectTestCommands,
@@ -125,6 +124,7 @@ export default function Reports() {
     if (typeof selected !== "string") return;
     setProjectPath(selected);
     setSelectedFile(null);
+    setSelectedSymbol("");
     setCurrentHtml(null);
     setMessage(null);
     setTestResults({});
@@ -247,6 +247,7 @@ export default function Reports() {
       setMessage({ ok: true, text: `Project map · ${result.nodes} узлов · ${result.edges} связей` });
       await refresh(path);
       setSelectedFile(null);
+      setSelectedSymbol("");
       setCurrentHtml(await readReport(result.reportPath));
     } catch (error) {
       setMessage({ ok: false, text: String(error) });

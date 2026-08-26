@@ -228,6 +228,23 @@ pub async fn get_symbols(root: &Path) -> Result<Vec<SymbolInfo>> {
 
 pub async fn analyze_project(root: &Path, settings: &Settings) -> Result<PipelineOutput> {
     let model = ucm(root).await?;
+
+    let ucm_raw = fs::read_to_string(root.join(".graphloom").join("ucm.json"))?;
+    let project_cache_key = format!("{}-{}", state::cache_key(settings), state::hash_bytes(ucm_raw.as_bytes()));
+    let mut project_state = state::load(root);
+    if let Some(project) = &project_state.project {
+        if project.cache_key == project_cache_key && fs::metadata(&project.report_path).is_ok() {
+            let dsl_raw = fs::read_to_string(&project.dsl_path)?;
+            let dsl: crate::dsl::Visualization = serde_json::from_str(&dsl_raw)?;
+            return Ok(PipelineOutput {
+                report_path: PathBuf::from(&project.report_path),
+                dsl_path: PathBuf::from(&project.dsl_path),
+                nodes: count_nodes(&dsl.nodes),
+                edges: dsl.edges.len(),
+            });
+        }
+    }
+
     let mut viz = semantic::from_project(&model);
     if !viz.nodes.is_empty() {
         let tree_json = serde_json::to_string_pretty(&viz)?;
@@ -244,7 +261,14 @@ pub async fn analyze_project(root: &Path, settings: &Settings) -> Result<Pipelin
         }
     }
     validate::validate(&mut viz, &model, &settings.palette).map_err(|errors| anyhow::anyhow!(errors.join("; ")))?;
-    finish(root, settings, viz, "project")
+    let out = finish(root, settings, viz, "project")?;
+    project_state.project = Some(state::ProjectReportState {
+        cache_key: project_cache_key,
+        report_path: out.report_path.to_string_lossy().to_string(),
+        dsl_path: out.dsl_path.to_string_lossy().to_string(),
+    });
+    state::save(root, &project_state)?;
+    Ok(out)
 }
 
 pub async fn analyze_file(

@@ -242,15 +242,18 @@ fn build_project_nodes(model: &UnifiedCodeModel) -> Vec<VizNode> {
     package_nodes
 }
 
+fn extract_json(raw: &str) -> &str {
+    let trimmed = raw.trim();
+    if trimmed.starts_with('{') {
+        return trimmed;
+    }
+    let start = trimmed.find('{').unwrap_or(trimmed.len());
+    let end = trimmed.rfind('}').map(|i| i + 1).unwrap_or(trimmed.len());
+    &trimmed[start..end]
+}
+
 pub fn apply_labels(viz: &mut Visualization, labels_json: &str) -> Result<()> {
-    let raw = labels_json.trim();
-    let json = if raw.starts_with('{') {
-        raw
-    } else {
-        let start = raw.find('{').unwrap_or(raw.len());
-        let end = raw.rfind('}').map(|i| i + 1).unwrap_or(raw.len());
-        &raw[start..end]
-    };
+    let json = extract_json(labels_json);
     let map: LabelMap = serde_json::from_str(json).context("invalid labels JSON")?;
     fn walk(nodes: &mut [VizNode], map: &HashMap<String, LabelEntry>) {
         for node in nodes.iter_mut() {
@@ -414,5 +417,28 @@ fn humanize(name: &str, kind: &str) -> String {
         "return" => "Вернуть".to_string(),
         "file" => name.to_string(),
         _ => name.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_json_returns_plain_object() {
+        let raw = r#"{"labels": {}}"#;
+        assert_eq!(extract_json(raw), r#"{"labels": {}}"#);
+    }
+
+    #[test]
+    fn extract_json_strips_markdown_fence() {
+        let raw = "Here is the JSON:\n```json\n{\"labels\": {}}\n```\nDone.";
+        assert_eq!(extract_json(raw), "{\"labels\": {}}");
+    }
+
+    #[test]
+    fn extract_json_returns_empty_when_no_braces() {
+        let raw = "no json here";
+        assert_eq!(extract_json(raw), "");
     }
 }

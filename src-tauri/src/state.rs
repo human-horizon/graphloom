@@ -17,9 +17,17 @@ pub struct FileState {
     pub dsl_path: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectReportState {
+    pub cache_key: String,
+    pub report_path: String,
+    pub dsl_path: String,
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ProjectState {
     pub files: BTreeMap<String, FileState>,
+    pub project: Option<ProjectReportState>,
 }
 
 pub fn state_path(root: &Path) -> PathBuf {
@@ -84,6 +92,6 @@ pub fn cache_key(settings: &Settings) -> String {
     hash_bytes(payload.to_string().as_bytes())
 }
 
-fn hash_bytes(bytes: &[u8]) -> String {
+pub fn hash_bytes(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
