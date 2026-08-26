@@ -233,7 +233,10 @@ pub async fn analyze_project(root: &Path, settings: &Settings) -> Result<Pipelin
     let project_cache_key = format!("{}-{}", state::cache_key(settings), state::hash_bytes(ucm_raw.as_bytes()));
     let mut project_state = state::load(root);
     if let Some(project) = &project_state.project {
-        if project.cache_key == project_cache_key && fs::metadata(&project.report_path).is_ok() {
+        if project.cache_key == project_cache_key
+            && fs::metadata(&project.report_path).is_ok()
+            && fs::metadata(&project.dsl_path).is_ok()
+        {
             let dsl_raw = fs::read_to_string(&project.dsl_path)?;
             let dsl: crate::dsl::Visualization = serde_json::from_str(&dsl_raw)?;
             return Ok(PipelineOutput {
