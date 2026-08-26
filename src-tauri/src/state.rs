@@ -24,9 +24,17 @@ pub struct ProjectReportState {
     pub dsl_path: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FunctionState {
+    pub cache_key: String,
+    pub report_path: String,
+    pub dsl_path: String,
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct ProjectState {
     pub files: BTreeMap<String, FileState>,
+    pub functions: BTreeMap<String, FunctionState>,
     pub project: Option<ProjectReportState>,
 }
 

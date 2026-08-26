@@ -312,6 +312,26 @@ pub async fn analyze_function(
         .iter()
         .find(|s| s.id == symbol_id)
         .with_context(|| format!("symbol '{symbol_id}' not found in UCM"))?;
+
+    let file_hash = state::file_hash(root, &symbol.source.file)?;
+    let function_cache_key = format!("{}-{}-{}", state::cache_key(settings), file_hash, symbol_id);
+    let mut project_state = state::load(root);
+    if let Some(function_state) = project_state.functions.get(symbol_id) {
+        if function_state.cache_key == function_cache_key
+            && fs::metadata(&function_state.report_path).is_ok()
+            && fs::metadata(&function_state.dsl_path).is_ok()
+        {
+            let dsl_raw = fs::read_to_string(&function_state.dsl_path)?;
+            let dsl: crate::dsl::Visualization = serde_json::from_str(&dsl_raw)?;
+            return Ok(PipelineOutput {
+                report_path: PathBuf::from(&function_state.report_path),
+                dsl_path: PathBuf::from(&function_state.dsl_path),
+                nodes: count_nodes(&dsl.nodes),
+                edges: dsl.edges.len(),
+            });
+        }
+    }
+
     let source = fs::read_to_string(root.join(&symbol.source.file))
         .with_context(|| format!("cannot read {}", symbol.source.file))?;
 
@@ -331,7 +351,14 @@ pub async fn analyze_function(
         }
     }
     validate::validate(&mut viz, &model, &settings.palette).map_err(|errors| anyhow::anyhow!(errors.join("; ")))?;
-    finish(root, settings, viz, "function")
+    let out = finish(root, settings, viz, "function")?;
+    project_state.functions.insert(symbol_id.to_string(), state::FunctionState {
+        cache_key: function_cache_key,
+        report_path: out.report_path.to_string_lossy().to_string(),
+        dsl_path: out.dsl_path.to_string_lossy().to_string(),
+    });
+    state::save(root, &project_state)?;
+    Ok(out)
 }
 
 /// Renders the visualization to a self-contained HTML report in `.graphloom/`.
