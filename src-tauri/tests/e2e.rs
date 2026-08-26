@@ -89,6 +89,17 @@ async fn full_pipeline_against_mock_llm() {
     assert!(flow_html.contains("CreateUser"));
     assert!(flow_html.contains("internal/user/user.go"));
 
+    // Function-level cache: same input -> identical HTML bytes
+    let flow2 = pipeline::analyze_function(
+        &go_sample,
+        &settings,
+        "example.com/go-sample/internal/user.CreateUser",
+    )
+    .await
+    .expect("second function analysis failed");
+    let flow_html2 = std::fs::read_to_string(&flow2.report_path).unwrap();
+    assert_eq!(flow_html, flow_html2);
+
     // Symbol listing for the UI picker
     let symbols = pipeline::get_symbols(Path::new(&format!("{FIXTURES}/go-sample")))
         .await
