@@ -52,7 +52,9 @@ fn ts_analyzer_command(root: &Path) -> (PathBuf, Vec<String>, PathBuf) {
     )
 }
 
-async fn run_sidecar((program, args, cwd): &(PathBuf, Vec<String>, PathBuf)) -> Result<UnifiedCodeModel> {
+async fn run_sidecar(
+    (program, args, cwd): &(PathBuf, Vec<String>, PathBuf),
+) -> Result<UnifiedCodeModel> {
     let output = Command::new(program)
         .args(args)
         .current_dir(cwd)

@@ -115,7 +115,7 @@ async fn full_pipeline_against_mock_llm() {
         .await
         .expect("ts project analysis failed");
     let ts_html = std::fs::read_to_string(&ts_out.report_path).unwrap();
-    assert!(ts_html.contains("Сервис пользователей"));    // Incremental file generation: cache hit, then content change invalidation.
+    assert!(ts_html.contains("Сервис пользователей")); // Incremental file generation: cache hit, then content change invalidation.
     let initial_plan = pipeline::get_update_plan(&go_sample, &settings)
         .await
         .expect("update plan failed");
@@ -131,15 +131,35 @@ async fn full_pipeline_against_mock_llm() {
     let cached_plan = pipeline::get_update_plan(&go_sample, &settings)
         .await
         .expect("cached update plan failed");
-    assert_eq!(cached_plan.files.iter().find(|file| file.path == tracked.path).unwrap().status, "ready");
+    assert_eq!(
+        cached_plan
+            .files
+            .iter()
+            .find(|file| file.path == tracked.path)
+            .unwrap()
+            .status,
+        "ready"
+    );
 
     let source_path = go_sample.join(&tracked.path);
     let original = std::fs::read_to_string(&source_path).unwrap();
-    std::fs::write(&source_path, format!("{original}\n// changed for incremental test\n")).unwrap();
+    std::fs::write(
+        &source_path,
+        format!("{original}\n// changed for incremental test\n"),
+    )
+    .unwrap();
     let changed_plan = pipeline::get_update_plan(&go_sample, &settings)
         .await
         .expect("changed update plan failed");
-    assert_eq!(changed_plan.files.iter().find(|file| file.path == tracked.path).unwrap().status, "pending");
+    assert_eq!(
+        changed_plan
+            .files
+            .iter()
+            .find(|file| file.path == tracked.path)
+            .unwrap()
+            .status,
+        "pending"
+    );
     std::fs::write(source_path, original).unwrap();
 
     // Render pipeline: stored DSL should re-render to HTML without touching the LLM.

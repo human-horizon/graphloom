@@ -67,7 +67,10 @@ pub async fn analyze_project(path: String) -> Result<AnalyzeResultPayload, Strin
 }
 
 #[tauri::command]
-pub async fn analyze_function(path: String, symbol_id: String) -> Result<AnalyzeResultPayload, String> {
+pub async fn analyze_function(
+    path: String,
+    symbol_id: String,
+) -> Result<AnalyzeResultPayload, String> {
     let root = PathBuf::from(&path);
     let s = settings::load();
     let out = pipeline::analyze_function(&root, &s, &symbol_id)
@@ -90,7 +93,11 @@ pub async fn get_update_plan(path: String) -> Result<UpdatePlan, String> {
 }
 
 #[tauri::command]
-pub async fn update_file(path: String, file: String, expected_hash: String) -> Result<AnalyzeResultPayload, String> {
+pub async fn update_file(
+    path: String,
+    file: String,
+    expected_hash: String,
+) -> Result<AnalyzeResultPayload, String> {
     let root = PathBuf::from(&path);
     let s = settings::load();
     let out = pipeline::update_file(&root, &s, &file, &expected_hash)
@@ -169,7 +176,11 @@ pub fn list_reports(path: String) -> Result<Vec<ReportEntry>, String> {
             })
             .unwrap_or_default();
         entries.push(ReportEntry {
-            name: p.file_name().unwrap_or_default().to_string_lossy().into_owned(),
+            name: p
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
             path: p.to_string_lossy().into_owned(),
             created_at: created,
         });

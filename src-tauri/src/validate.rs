@@ -22,7 +22,8 @@ pub fn validate(
 
     let files = file_line_counts(ucm);
     let file_lines = file_max_lines(ucm);
-    let symbol_by_id: HashMap<&str, &Symbol> = ucm.symbols.iter().map(|s| (s.id.as_str(), s)).collect();
+    let symbol_by_id: HashMap<&str, &Symbol> =
+        ucm.symbols.iter().map(|s| (s.id.as_str(), s)).collect();
     let symbols: HashSet<&str> = symbol_by_id.keys().copied().collect();
     let calls_by_file = calls_by_file(ucm);
     let palette_types: HashSet<&str> = palette.iter().map(|p| p.kind.as_str()).collect();
@@ -119,8 +120,14 @@ fn snap_node_source(
     symbol_by_id: &HashMap<&str, &Symbol>,
     calls_by_file: &HashMap<&str, Vec<&Call>>,
 ) {
-    let Some(source) = node.source.as_mut() else { return };
-    let max_line = file_lines.get(source.file.as_str()).copied().unwrap_or(1).max(1);
+    let Some(source) = node.source.as_mut() else {
+        return;
+    };
+    let max_line = file_lines
+        .get(source.file.as_str())
+        .copied()
+        .unwrap_or(1)
+        .max(1);
 
     // Prefer exact symbol position when available.
     if let Some(symbol_id) = &node.symbol {
@@ -134,7 +141,10 @@ fn snap_node_source(
     }
 
     // For call-like nodes, snap to the nearest UCM call in the same file.
-    if matches!(node.kind, NodeKind::Call | NodeKind::Action | NodeKind::Error | NodeKind::Async) {
+    if matches!(
+        node.kind,
+        NodeKind::Call | NodeKind::Action | NodeKind::Error | NodeKind::Async
+    ) {
         if let Some(calls) = calls_by_file.get(source.file.as_str()) {
             let center = (source.start_line + source.end_line) / 2;
             let mut best: Option<&Call> = None;
@@ -199,7 +209,10 @@ fn validate_node(
 ) {
     snap_node_source(node, file_lines, symbol_by_id, calls_by_file);
     if level != Level::Project && node.source.is_none() {
-        errors.push(format!("node '{}' missing source ref on scoped level", node.id));
+        errors.push(format!(
+            "node '{}' missing source ref on scoped level",
+            node.id
+        ));
     }
     if let Some(source) = &node.source {
         if source.start_line == 0 || source.start_line > source.end_line {
@@ -217,7 +230,10 @@ fn validate_node(
     }
     if let Some(symbol) = &node.symbol {
         if !symbols.contains(symbol.as_str()) {
-            errors.push(format!("node '{}' references unknown symbol '{}'", node.id, symbol));
+            errors.push(format!(
+                "node '{}' references unknown symbol '{}'",
+                node.id, symbol
+            ));
         }
     }
     if let Some(element_type) = &node.element_type {
@@ -237,14 +253,27 @@ fn validate_node(
         }
     }
     for child in &mut node.children {
-        validate_node(child, node_ids, files, file_lines, symbol_by_id, calls_by_file, symbols, palette_types, level, errors);
+        validate_node(
+            child,
+            node_ids,
+            files,
+            file_lines,
+            symbol_by_id,
+            calls_by_file,
+            symbols,
+            palette_types,
+            level,
+            errors,
+        );
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{EdgeStatus, Layer, Level, NodeKind, SourceRef, VizEdge, VizNode, Visualization};
+    use crate::dsl::{
+        EdgeStatus, Layer, Level, NodeKind, SourceRef, Visualization, VizEdge, VizNode,
+    };
     use crate::settings::ElementType;
     use crate::ucm::{SourceRange, Symbol, SymbolKind, UnifiedCodeModel};
 
@@ -268,7 +297,11 @@ mod tests {
                     kind: SymbolKind::Function,
                     name: "Run".to_string(),
                     package: "app/main".to_string(),
-                    source: SourceRange { file: "main.go".to_string(), start_line: 10, end_line: 20 },
+                    source: SourceRange {
+                        file: "main.go".to_string(),
+                        start_line: 10,
+                        end_line: 20,
+                    },
                     signature: "func()".to_string(),
                     is_exported: true,
                     is_async: false,
@@ -278,7 +311,11 @@ mod tests {
                     kind: SymbolKind::Function,
                     name: "Save".to_string(),
                     package: "app/db".to_string(),
-                    source: SourceRange { file: "db/save.go".to_string(), start_line: 5, end_line: 12 },
+                    source: SourceRange {
+                        file: "db/save.go".to_string(),
+                        start_line: 5,
+                        end_line: 12,
+                    },
                     signature: "func()".to_string(),
                     is_exported: true,
                     is_async: false,
@@ -331,13 +368,19 @@ mod tests {
 
     #[test]
     fn accepts_valid_visualization() {
-        let mut v = viz(vec![node("a"), node("b")], vec![edge("a", "b", EdgeStatus::Inferred)]);
+        let mut v = viz(
+            vec![node("a"), node("b")],
+            vec![edge("a", "b", EdgeStatus::Inferred)],
+        );
         assert!(validate(&mut v, &ucm(), &palette()).is_ok());
     }
 
     #[test]
     fn rejects_unknown_edge_target() {
-        let mut v = viz(vec![node("a")], vec![edge("a", "ghost", EdgeStatus::Inferred)]);
+        let mut v = viz(
+            vec![node("a")],
+            vec![edge("a", "ghost", EdgeStatus::Inferred)],
+        );
         let err = validate(&mut v, &ucm(), &palette()).unwrap_err();
         assert!(err.iter().any(|e| e.contains("ghost")));
     }
@@ -345,7 +388,11 @@ mod tests {
     #[test]
     fn rejects_unknown_source_file() {
         let mut n = node("a");
-        n.source = Some(SourceRef { file: "nope.go".to_string(), start_line: 1, end_line: 2 });
+        n.source = Some(SourceRef {
+            file: "nope.go".to_string(),
+            start_line: 1,
+            end_line: 2,
+        });
         let mut v = viz(vec![n], vec![]);
         let err = validate(&mut v, &ucm(), &palette()).unwrap_err();
         assert!(err.iter().any(|e| e.contains("unknown file")));
@@ -394,7 +441,11 @@ mod tests {
         model.calls.push(crate::ucm::Call {
             from: "app/main.Run".to_string(),
             to: "app/db.Save".to_string(),
-            source: SourceRange { file: "main.go".to_string(), start_line: 15, end_line: 15 },
+            source: SourceRange {
+                file: "main.go".to_string(),
+                start_line: 15,
+                end_line: 15,
+            },
         });
         let mut a = node("a");
         a.symbol = Some("app/main.Run".to_string());

@@ -27,7 +27,7 @@ const TEMPLATE: &str = include_str!("render.html");
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{Layer, Level, NodeKind, VizEdge, VizNode, Visualization};
+    use crate::dsl::{Layer, Level, NodeKind, Visualization, VizEdge, VizNode};
 
     fn sample_viz() -> Visualization {
         Visualization {
@@ -51,7 +51,12 @@ mod tests {
                 effects: vec![],
                 cross_refs: vec![],
             }],
-            edges: vec![VizEdge { from: "a".to_string(), to: "a".to_string(), label: None, status: None }],
+            edges: vec![VizEdge {
+                from: "a".to_string(),
+                to: "a".to_string(),
+                label: None,
+                status: None,
+            }],
         }
     }
 

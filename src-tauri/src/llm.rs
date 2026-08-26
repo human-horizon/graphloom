@@ -46,11 +46,15 @@ impl<'a> Chat<'a> {
     }
 
     pub fn push_user(&mut self, content: String) {
-        self.messages.push(json!({"role": "user", "content": content}));
+        self.messages
+            .push(json!({"role": "user", "content": content}));
     }
 
     pub async fn complete(&mut self) -> Result<String> {
-        let url = format!("{}/chat/completions", self.endpoint.base_url.trim_end_matches('/'));
+        let url = format!(
+            "{}/chat/completions",
+            self.endpoint.base_url.trim_end_matches('/')
+        );
         let body = json!({
             "model": self.endpoint.model,
             "messages": self.messages,
@@ -71,12 +75,16 @@ impl<'a> Chat<'a> {
             }
             bail!("LLM endpoint error {status}: {text}");
         }
-        let payload: Value = resp.json().await.context("invalid JSON from LLM endpoint")?;
+        let payload: Value = resp
+            .json()
+            .await
+            .context("invalid JSON from LLM endpoint")?;
         let content = payload["choices"][0]["message"]["content"]
             .as_str()
             .context("no content in LLM response")?
             .to_string();
-        self.messages.push(json!({"role": "assistant", "content": content}));
+        self.messages
+            .push(json!({"role": "assistant", "content": content}));
         Ok(content)
     }
 }

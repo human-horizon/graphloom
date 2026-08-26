@@ -22,12 +22,21 @@ async fn live_project_map() {
         let file_out = pipeline::analyze_file(Path::new(&project), &settings, "main.go")
             .await
             .expect("large project file analysis failed");
-        eprintln!("large project file report: {}", file_out.report_path.display());
-        eprintln!("large project file nodes: {} edges: {}", file_out.nodes, file_out.edges);
+        eprintln!(
+            "large project file report: {}",
+            file_out.report_path.display()
+        );
+        eprintln!(
+            "large project file nodes: {} edges: {}",
+            file_out.nodes, file_out.edges
+        );
         assert!(file_out.nodes > 0);
         return;
     }
-    eprintln!("endpoint: {} model: {}", settings.endpoint.base_url, settings.endpoint.model);
+    eprintln!(
+        "endpoint: {} model: {}",
+        settings.endpoint.base_url, settings.endpoint.model
+    );
 
     let models = graphloom_lib::llm::check_connection(&settings.endpoint)
         .await

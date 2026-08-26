@@ -59,7 +59,10 @@ pub async fn ucm(root: &Path) -> Result<UnifiedCodeModel> {
     let cache = root.join(".graphloom").join("ucm.json");
     let fingerprint_path = root.join(".graphloom").join("ucm.hash");
     let fingerprint = state::source_fingerprint(root)?;
-    if let (Ok(raw), Ok(cached_fingerprint)) = (fs::read_to_string(&cache), fs::read_to_string(&fingerprint_path)) {
+    if let (Ok(raw), Ok(cached_fingerprint)) = (
+        fs::read_to_string(&cache),
+        fs::read_to_string(&fingerprint_path),
+    ) {
         if cached_fingerprint == fingerprint {
             if let Ok(model) = serde_json::from_str(&raw) {
                 return Ok(model);
@@ -102,7 +105,11 @@ pub async fn get_file_tree(root: &Path) -> Result<Vec<FileInfo>> {
                 .file_name()
                 .map(|item| item.to_string_lossy().into_owned())
                 .unwrap_or_else(|| path.clone());
-            FileInfo { path, name, language: language.to_string() }
+            FileInfo {
+                path,
+                name,
+                language: language.to_string(),
+            }
         })
         .collect::<Vec<_>>();
     files.sort_by(|a, b| a.path.cmp(&b.path));
@@ -127,7 +134,9 @@ pub async fn get_update_plan(root: &Path, settings: &Settings) -> Result<UpdateP
         let cached_state = project_state.files.get(&path);
         let report_path = cached_state.map(|item| item.report_path.clone());
         let is_cached = cached_state.is_some_and(|item| {
-            item.hash == hash && item.cache_key == cache_key && Path::new(&item.report_path).exists()
+            item.hash == hash
+                && item.cache_key == cache_key
+                && Path::new(&item.report_path).exists()
         });
         if is_cached {
             cached += 1;
@@ -144,7 +153,12 @@ pub async fn get_update_plan(root: &Path, settings: &Settings) -> Result<UpdateP
     }
     files.sort_by(|a, b| a.path.cmp(&b.path));
     state::save(root, &project_state)?;
-    Ok(UpdatePlan { total: files.len(), pending, cached, files })
+    Ok(UpdatePlan {
+        total: files.len(),
+        pending,
+        cached,
+        files,
+    })
 }
 
 pub async fn update_file(
@@ -159,21 +173,20 @@ pub async fn update_file(
     }
     let output = analyze_file(root, settings, file).await?;
     let mut project_state = state::load(root);
-    project_state.files.insert(file.to_string(), state::FileState {
-        hash: actual_hash,
-        cache_key: state::cache_key(settings),
-        report_path: output.report_path.to_string_lossy().into_owned(),
-        dsl_path: output.dsl_path.to_string_lossy().into_owned(),
-    });
+    project_state.files.insert(
+        file.to_string(),
+        state::FileState {
+            hash: actual_hash,
+            cache_key: state::cache_key(settings),
+            report_path: output.report_path.to_string_lossy().into_owned(),
+            dsl_path: output.dsl_path.to_string_lossy().into_owned(),
+        },
+    );
     state::save(root, &project_state)?;
     Ok(output)
 }
 
-pub fn render_report_from_dsl(
-    root: &Path,
-    settings: &Settings,
-    file: &str,
-) -> Result<PathBuf> {
+pub fn render_report_from_dsl(root: &Path, settings: &Settings, file: &str) -> Result<PathBuf> {
     let mut project_state = state::load(root);
     let Some(entry) = project_state.files.get(file) else {
         bail!("file '{file}' has no cached report");
@@ -184,7 +197,8 @@ pub fn render_report_from_dsl(
     let raw = fs::read_to_string(&entry.dsl_path)?;
     let mut viz: Visualization = serde_json::from_str(&raw)?;
     let model = ucm_sync(root)?;
-    validate::validate(&mut viz, &model, &settings.palette).map_err(|errors| anyhow::anyhow!(errors.join("; ")))?;
+    validate::validate(&mut viz, &model, &settings.palette)
+        .map_err(|errors| anyhow::anyhow!(errors.join("; ")))?;
     let mut referenced = BTreeSet::new();
     collect_files(&viz.nodes, &mut referenced);
     let mut sources = BTreeMap::new();
@@ -230,7 +244,11 @@ pub async fn analyze_project(root: &Path, settings: &Settings) -> Result<Pipelin
     let model = ucm(root).await?;
 
     let ucm_raw = fs::read_to_string(root.join(".graphloom").join("ucm.json"))?;
-    let project_cache_key = format!("{}-{}", state::cache_key(settings), state::hash_bytes(ucm_raw.as_bytes()));
+    let project_cache_key = format!(
+        "{}-{}",
+        state::cache_key(settings),
+        state::hash_bytes(ucm_raw.as_bytes())
+    );
     let mut project_state = state::load(root);
     if let Some(project) = &project_state.project {
         if project.cache_key == project_cache_key
@@ -263,7 +281,8 @@ pub async fn analyze_project(root: &Path, settings: &Settings) -> Result<Pipelin
             Err(error) => eprintln!("project labels request failed: {error}"),
         }
     }
-    validate::validate(&mut viz, &model, &settings.palette).map_err(|errors| anyhow::anyhow!(errors.join("; ")))?;
+    validate::validate(&mut viz, &model, &settings.palette)
+        .map_err(|errors| anyhow::anyhow!(errors.join("; ")))?;
     let out = finish(root, settings, viz, "project")?;
     project_state.project = Some(state::ProjectReportState {
         cache_key: project_cache_key,
@@ -274,14 +293,10 @@ pub async fn analyze_project(root: &Path, settings: &Settings) -> Result<Pipelin
     Ok(out)
 }
 
-pub async fn analyze_file(
-    root: &Path,
-    settings: &Settings,
-    file: &str,
-) -> Result<PipelineOutput> {
+pub async fn analyze_file(root: &Path, settings: &Settings, file: &str) -> Result<PipelineOutput> {
     let model = ucm(root).await?;
-    let source = fs::read_to_string(root.join(file))
-        .with_context(|| format!("cannot read {file}"))?;
+    let source =
+        fs::read_to_string(root.join(file)).with_context(|| format!("cannot read {file}"))?;
     let mut viz = semantic::from_entities(file, &source, &model);
     if !viz.nodes.is_empty() {
         let tree_json = serde_json::to_string_pretty(&viz)?;
@@ -297,7 +312,8 @@ pub async fn analyze_file(
             Err(error) => eprintln!("file labels request failed: {error}"),
         }
     }
-    validate::validate(&mut viz, &model, &settings.palette).map_err(|errors| anyhow::anyhow!(errors.join("; ")))?;
+    validate::validate(&mut viz, &model, &settings.palette)
+        .map_err(|errors| anyhow::anyhow!(errors.join("; ")))?;
     finish(root, settings, viz, "file")
 }
 
@@ -350,13 +366,17 @@ pub async fn analyze_function(
             Err(error) => eprintln!("function labels request failed: {error}"),
         }
     }
-    validate::validate(&mut viz, &model, &settings.palette).map_err(|errors| anyhow::anyhow!(errors.join("; ")))?;
+    validate::validate(&mut viz, &model, &settings.palette)
+        .map_err(|errors| anyhow::anyhow!(errors.join("; ")))?;
     let out = finish(root, settings, viz, "function")?;
-    project_state.functions.insert(symbol_id.to_string(), state::FunctionState {
-        cache_key: function_cache_key,
-        report_path: out.report_path.to_string_lossy().to_string(),
-        dsl_path: out.dsl_path.to_string_lossy().to_string(),
-    });
+    project_state.functions.insert(
+        symbol_id.to_string(),
+        state::FunctionState {
+            cache_key: function_cache_key,
+            report_path: out.report_path.to_string_lossy().to_string(),
+            dsl_path: out.dsl_path.to_string_lossy().to_string(),
+        },
+    );
     state::save(root, &project_state)?;
     Ok(out)
 }
@@ -407,4 +427,3 @@ fn collect_files(nodes: &[crate::dsl::VizNode], out: &mut BTreeSet<String>) {
         collect_files(&node.children, out);
     }
 }
-

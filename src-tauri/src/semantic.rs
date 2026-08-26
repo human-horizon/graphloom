@@ -1,4 +1,4 @@
-use crate::dsl::{Layer, NodeKind, SourceRef, VizNode, Visualization};
+use crate::dsl::{Layer, NodeKind, SourceRef, Visualization, VizNode};
 use crate::ucm::{Entity, UnifiedCodeModel};
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -18,30 +18,42 @@ struct LabelEntry {
 }
 
 /// Builds a scope-tree visualization for a single function/method entity.
-pub fn from_function(symbol_id: &str, _source: &str, model: &UnifiedCodeModel) -> Result<Visualization> {
+pub fn from_function(
+    symbol_id: &str,
+    _source: &str,
+    model: &UnifiedCodeModel,
+) -> Result<Visualization> {
     let found = model
         .entities
         .iter()
         .find(|e| e.symbol == symbol_id && (e.kind == "function" || e.kind == "method"));
 
-    let synthetic = found.is_none().then(|| {
-        model.symbols.iter().find(|s| s.id == symbol_id).map(|s| Entity {
-            id: format!("func:{}", s.id),
-            kind: "function".to_string(),
-            name: s.name.clone(),
-            label: String::new(),
-            symbol: s.id.clone(),
-            callee: String::new(),
-            condition: String::new(),
-            source: s.source.clone(),
-            parent_id: String::new(),
-            children: Vec::new(),
+    let synthetic = found
+        .is_none()
+        .then(|| {
+            model
+                .symbols
+                .iter()
+                .find(|s| s.id == symbol_id)
+                .map(|s| Entity {
+                    id: format!("func:{}", s.id),
+                    kind: "function".to_string(),
+                    name: s.name.clone(),
+                    label: String::new(),
+                    symbol: s.id.clone(),
+                    callee: String::new(),
+                    condition: String::new(),
+                    source: s.source.clone(),
+                    parent_id: String::new(),
+                    children: Vec::new(),
+                })
         })
-    }).flatten();
+        .flatten();
 
-    let entity: &Entity = found
-        .or(synthetic.as_ref())
-        .context(format!("function entity for symbol '{}' not found", symbol_id))?;
+    let entity: &Entity = found.or(synthetic.as_ref()).context(format!(
+        "function entity for symbol '{}' not found",
+        symbol_id
+    ))?;
 
     let by_id: HashMap<&str, &Entity> = model.entities.iter().map(|e| (e.id.as_str(), e)).collect();
     let mut children_by_parent: HashMap<&str, Vec<&Entity>> = HashMap::new();
@@ -132,7 +144,10 @@ fn attach_cross_refs(viz: &mut Visualization, model: &UnifiedCodeModel) {
                                 file: file.to_string(),
                                 label: format!(
                                     "← {} in {}",
-                                    symbol_names.get(call.from.as_str()).copied().unwrap_or(&call.from),
+                                    symbol_names
+                                        .get(call.from.as_str())
+                                        .copied()
+                                        .unwrap_or(&call.from),
                                     file
                                 ),
                             });
@@ -144,7 +159,12 @@ fn attach_cross_refs(viz: &mut Visualization, model: &UnifiedCodeModel) {
         }
     }
 
-    walk(&mut viz.nodes, &symbol_files, &symbol_names, &callers_by_target);
+    walk(
+        &mut viz.nodes,
+        &symbol_files,
+        &symbol_names,
+        &callers_by_target,
+    );
 }
 
 fn build_project_nodes(model: &UnifiedCodeModel) -> Vec<VizNode> {
@@ -155,7 +175,10 @@ fn build_project_nodes(model: &UnifiedCodeModel) -> Vec<VizNode> {
             let symbols: Vec<&crate::ucm::Symbol> = model
                 .symbols
                 .iter()
-                .filter(|s| s.source.file == *file && (s.is_exported || s.package == "main" || s.package.ends_with("/main")))
+                .filter(|s| {
+                    s.source.file == *file
+                        && (s.is_exported || s.package == "main" || s.package.ends_with("/main"))
+                })
                 .collect();
             if symbols.is_empty() {
                 continue;
@@ -164,8 +187,12 @@ fn build_project_nodes(model: &UnifiedCodeModel) -> Vec<VizNode> {
                 .into_iter()
                 .map(|s| {
                     let kind = match s.kind {
-                        crate::ucm::SymbolKind::Function | crate::ucm::SymbolKind::Method => NodeKind::Group,
-                        crate::ucm::SymbolKind::Type | crate::ucm::SymbolKind::Interface => NodeKind::Group,
+                        crate::ucm::SymbolKind::Function | crate::ucm::SymbolKind::Method => {
+                            NodeKind::Group
+                        }
+                        crate::ucm::SymbolKind::Type | crate::ucm::SymbolKind::Interface => {
+                            NodeKind::Group
+                        }
                         _ => NodeKind::Action,
                     };
                     VizNode {
@@ -195,7 +222,11 @@ fn build_project_nodes(model: &UnifiedCodeModel) -> Vec<VizNode> {
             file_nodes.push(VizNode {
                 id: format!("file:{}", file),
                 kind: NodeKind::Group,
-                label: file.rsplit_once('/').map(|(_, name)| name).unwrap_or(file).to_string(),
+                label: file
+                    .rsplit_once('/')
+                    .map(|(_, name)| name)
+                    .unwrap_or(file)
+                    .to_string(),
                 layer: Layer::Flow,
                 source: Some(SourceRef {
                     file: file.clone(),
@@ -328,7 +359,9 @@ fn build_node<'a>(
         .map(|list| {
             let mut list = list.to_vec();
             list.sort_by_key(|e| e.source.start_line);
-            list.into_iter().map(|e| build_node(e, _by_id, children_by_parent)).collect()
+            list.into_iter()
+                .map(|e| build_node(e, _by_id, children_by_parent))
+                .collect()
         })
         .unwrap_or_default();
 
@@ -363,7 +396,11 @@ fn build_node<'a>(
             end_line: entity.source.end_line,
         }),
         element_type: None,
-        symbol: if entity.symbol.is_empty() { None } else { Some(entity.symbol.clone()) },
+        symbol: if entity.symbol.is_empty() {
+            None
+        } else {
+            Some(entity.symbol.clone())
+        },
         summary: None,
         tests: None,
         confidence: None,

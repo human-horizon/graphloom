@@ -53,11 +53,41 @@ impl Default for Settings {
 
 fn default_palette() -> Vec<ElementType> {
     let entries = [
-        ("service", "Сервис", "#3b82f6", "Settings2", "Самостоятельный сервис или приложение"),
-        ("database", "База данных", "#10b981", "Database", "Хранилище данных, слой доступа к БД"),
-        ("module", "Модуль", "#a78bfa", "Box", "Внутренний модуль или пакет"),
-        ("library", "Библиотека", "#f59e0b", "Library", "Переиспользуемая библиотека"),
-        ("entrypoint", "Точка входа", "#ef4444", "Rocket", "main / CLI / server entrypoint"),
+        (
+            "service",
+            "Сервис",
+            "#3b82f6",
+            "Settings2",
+            "Самостоятельный сервис или приложение",
+        ),
+        (
+            "database",
+            "База данных",
+            "#10b981",
+            "Database",
+            "Хранилище данных, слой доступа к БД",
+        ),
+        (
+            "module",
+            "Модуль",
+            "#a78bfa",
+            "Box",
+            "Внутренний модуль или пакет",
+        ),
+        (
+            "library",
+            "Библиотека",
+            "#f59e0b",
+            "Library",
+            "Переиспользуемая библиотека",
+        ),
+        (
+            "entrypoint",
+            "Точка входа",
+            "#ef4444",
+            "Rocket",
+            "main / CLI / server entrypoint",
+        ),
     ];
     entries
         .iter()

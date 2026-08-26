@@ -73,10 +73,16 @@ pub fn source_fingerprint(root: &Path) -> Result<String> {
         .filter(|entry| entry.file_type().is_file())
         .filter_map(|entry| {
             let path = entry.path().strip_prefix(root).ok()?.to_path_buf();
-            if path.components().any(|part| part.as_os_str() == ".graphloom") {
+            if path
+                .components()
+                .any(|part| part.as_os_str() == ".graphloom")
+            {
                 return None;
             }
-            let supported = matches!(path.extension().and_then(|item| item.to_str()), Some("go" | "ts" | "tsx"));
+            let supported = matches!(
+                path.extension().and_then(|item| item.to_str()),
+                Some("go" | "ts" | "tsx")
+            );
             supported.then_some(path)
         })
         .collect::<Vec<_>>();
