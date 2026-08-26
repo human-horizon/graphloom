@@ -6,25 +6,30 @@ AI превращает исходный код в интерактивное в
 ## Архитектура
 
 ```
-Repository → Language Analyzer → Unified Code Model → AI Semantic Analyzer
-→ Visualization DSL → Validator → Layout Engine → Renderer (self-contained HTML)
+Repository → Language Analyzer (entities) → Unified Code Model → AI Labeler
+→ Semantic Scope DSL → Validator → Layout Engine → Renderer (self-contained HTML)
 ```
 
-- **Анализаторы (sidecar):** `analyzers/go` (go/packages + go/types), `analyzers/ts` (ts-morph).
-  Оба выводят Unified Code Model JSON в stdout.
-- **AI** (любой OpenAI-совместимый endpoint: llama.cpp, Ollama) получает только UCM
-  и отвечает строгим Visualization DSL (`src-tauri/src/dsl.schema.json`).
+- **Анализаторы (sidecar):** `analyzers/go` (go/packages + go/ast), `analyzers/ts` (ts-morph).
+  Оба извлекают **семантические сущности** (function, call, if/else, loop, return, variable, type, interface)
+  со stable ID и AST-диапазонами.
+- **AI** (любой OpenAI-совместимый endpoint) получает только дерево сущностей и **только лейблит** их:
+  не придумывает новые узлы и не меняет структуру.
 - **Validator** сверяет DSL с UCM: никаких выдуманных файлов, символов и связей.
-- **Renderer** — детерминированный layered layout, офлайн HTML в `.graphloom/`.
+- **Renderer** — древовидный scope layout, офлайн HTML в `.graphloom/`, кликабельные cross-ссылки между файлами.
 
 ## Запуск
 
 ```bash
-# собрать анализаторы
+./scripts/install-mac.sh   # собирает sidecar-ы, тесты, tauri build и устанавливает в /Applications
+```
+
+Или вручную:
+
+```bash
+pnpm install
 cd analyzers/go && go build -o graphloom-analyze . && cd ../..
 pnpm --dir analyzers/ts install && pnpm --dir analyzers/ts build
-
-pnpm install
 pnpm tauri dev
 ```
 
@@ -41,8 +46,12 @@ E2E не требует живого LLM: `fixtures/mock-llm/server.py` — Open
 
 ## Возможности
 
-- Карта проекта (пакеты/модули, классификация по палитре пользователя, тест-покрытие)
-- Flow функции: семантические шаги, decision-ветки, side effects, привязка к строкам кода
-- Слои Flow / Calls / Data / State / Effects, поиск, back/forward, раскрытие callee
-- Конструктор типов элементов (палитра)
-- Запуск тестов проекта (unit/integration/e2e) из приложения
+- **Project map:** дерево пакетов → файлов → экспортированных символов с AI-лейблами и cross-ссылками (входящими и исходящими).
+- **File map:** scope tree функций, вызовов, условий и переменных внутри одного файла.
+- **Flow функции:** семантические шаги, decision-ветки, side effects, привязка к строкам кода.
+- **Cross-ссылки:** клик по call/символу открывает целевой файл и строит Flow целевой функции.
+- **Слои** Flow / Calls / Data / State / Effects, поиск, back/forward, раскрытие callee.
+- **DSL persistence:** каждый отчёт сохраняется как `.dsl.json` — можно перерисовать без LLM.
+- **Конструктор типов элементов** (палитра).
+- **Запуск тестов проекта** (unit/integration/e2e) из приложения.
+- **Инкрементная генерация:** повторный `Update` и `Project map` используют кэш, если исходники/настройки не менялись.
