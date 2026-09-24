@@ -58,6 +58,13 @@ export interface EffectModel {
 
 export type { EntityModel }
 
+export interface AnalysisError {
+    file: string
+    message: string
+    start_line: number
+    end_line: number
+}
+
 export interface UnifiedCodeModel {
     language: "typescript"
     packages: PackageModel[]
@@ -65,6 +72,7 @@ export interface UnifiedCodeModel {
     calls: CallModel[]
     effects: EffectModel[]
     entities?: EntityModel[]
+    errors: AnalysisError[]
 }
 
 type CallableNode = FunctionDeclaration | MethodDeclaration | ArrowFunction | FunctionExpression
@@ -97,6 +105,7 @@ export function analyzeDirectory(inputDirectory: string): UnifiedCodeModel {
     const sourceFiles = getProjectSourceFiles(project, directory)
     const packageMap = collectPackages(sourceFiles, directory)
     const symbolIndex = collectSymbols(sourceFiles, directory)
+    const errors = collectDiagnostics(project, directory)
     const calls: CallModel[] = []
     const effects: EffectModel[] = []
 
@@ -132,8 +141,25 @@ export function analyzeDirectory(inputDirectory: string): UnifiedCodeModel {
         symbols: symbolIndex.symbols.sort((left, right) => left.id.localeCompare(right.id)),
         calls: calls.sort(compareSourceRecords),
         effects: effects.sort(compareSourceRecords),
-        entities: collectEntities(sourceFiles, directory, symbolIndex.declarations)
+        entities: collectEntities(sourceFiles, directory, symbolIndex.declarations),
+        errors
     }
+}
+
+function collectDiagnostics(project: Project, directory: string): AnalysisError[] {
+    return project.getPreEmitDiagnostics()
+        .map(diagnostic => {
+            const sourceFile = diagnostic.getSourceFile()
+            const start = diagnostic.getStart() ?? 0
+            const position = sourceFile?.getLineAndColumnAtPos(start)
+            return {
+                file: sourceFile ? toRelativePath(directory, sourceFile.getFilePath()) : "",
+                message: diagnostic.getMessageText().toString(),
+                start_line: position?.line ?? 1,
+                end_line: position?.line ?? 1
+            }
+        })
+        .filter(error => error.file !== "")
 }
 
 function createProject(directory: string): Project {

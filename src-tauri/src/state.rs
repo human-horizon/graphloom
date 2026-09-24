@@ -7,7 +7,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
-const PROMPT_VERSION: &str = "file-map-v2";
+const PROMPT_VERSION: &str = "strict-coverage-v1";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileState {
@@ -15,6 +15,8 @@ pub struct FileState {
     pub cache_key: String,
     pub report_path: String,
     pub dsl_path: String,
+    #[serde(default)]
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

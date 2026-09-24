@@ -13,6 +13,16 @@ pub struct UnifiedCodeModel {
     pub effects: Vec<ExternalEffect>,
     #[serde(default)]
     pub entities: Vec<Entity>,
+    #[serde(default)]
+    pub errors: Vec<AnalysisError>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnalysisError {
+    pub file: String,
+    pub message: String,
+    pub start_line: u32,
+    pub end_line: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,6 +39,10 @@ pub struct Entity {
     pub callee: String,
     #[serde(default)]
     pub condition: String,
+    #[serde(default)]
+    pub code: String,
+    #[serde(default)]
+    pub coverage: bool,
     pub source: SourceRange,
     #[serde(default, rename = "parent_id")]
     pub parent_id: String,

@@ -13,8 +13,9 @@ struct LabelMap {
 struct LabelEntry {
     #[serde(default)]
     label: String,
-    #[serde(default)]
     summary: Option<String>,
+    #[serde(default)]
+    group_id: Option<String>,
 }
 
 /// Builds a scope-tree visualization for a single function/method entity.
@@ -43,6 +44,8 @@ pub fn from_function(
                     symbol: s.id.clone(),
                     callee: String::new(),
                     condition: String::new(),
+                    code: String::new(),
+                    coverage: false,
                     source: s.source.clone(),
                     parent_id: String::new(),
                     children: Vec::new(),
@@ -208,6 +211,8 @@ fn build_project_nodes(model: &UnifiedCodeModel) -> Vec<VizNode> {
                         element_type: None,
                         symbol: Some(s.id.clone()),
                         summary: None,
+                        coverage_ids: vec![],
+                        group_id: None,
                         tests: None,
                         confidence: None,
                         children: vec![],
@@ -236,6 +241,8 @@ fn build_project_nodes(model: &UnifiedCodeModel) -> Vec<VizNode> {
                 element_type: None,
                 symbol: None,
                 summary: None,
+                coverage_ids: vec![],
+                group_id: None,
                 tests: None,
                 confidence: None,
                 children,
@@ -259,6 +266,8 @@ fn build_project_nodes(model: &UnifiedCodeModel) -> Vec<VizNode> {
             element_type: None,
             symbol: None,
             summary: None,
+            coverage_ids: vec![],
+            group_id: None,
             tests: None,
             confidence: None,
             children: file_nodes,
@@ -283,24 +292,77 @@ fn extract_json(raw: &str) -> &str {
     &trimmed[start..end]
 }
 
-pub fn apply_labels(viz: &mut Visualization, labels_json: &str) -> Result<()> {
+pub fn apply_labels_strict(
+    viz: &mut Visualization,
+    labels_json: &str,
+    expected_ids: &[String],
+) -> Result<()> {
     let json = extract_json(labels_json);
     let map: LabelMap = serde_json::from_str(json).context("invalid labels JSON")?;
+    let expected: std::collections::HashSet<&str> =
+        expected_ids.iter().map(String::as_str).collect();
+    for id in expected_ids {
+        let Some(entry) = map.labels.get(id) else {
+            anyhow::bail!("LLM omitted required coverage item '{id}'")
+        };
+        if entry.label.trim().is_empty() {
+            anyhow::bail!("LLM returned an empty label for '{id}'")
+        }
+        if entry
+            .summary
+            .as_deref()
+            .is_none_or(|summary| summary.trim().is_empty())
+        {
+            anyhow::bail!("LLM returned an empty summary for '{id}'")
+        }
+    }
+    if let Some(id) = map.labels.keys().find(|id| !expected.contains(id.as_str())) {
+        anyhow::bail!("LLM returned an unexpected item '{id}'")
+    }
+
     fn walk(nodes: &mut [VizNode], map: &HashMap<String, LabelEntry>) {
         for node in nodes.iter_mut() {
             if let Some(entry) = map.get(&node.id) {
-                if !entry.label.is_empty() {
-                    node.label = entry.label.clone();
-                }
-                if entry.summary.is_some() {
-                    node.summary = entry.summary.clone();
-                }
+                node.label = entry.label.clone();
+                node.summary = entry.summary.clone();
+                node.group_id = entry.group_id.clone();
             }
             walk(&mut node.children, map);
         }
     }
     walk(&mut viz.nodes, &map.labels);
     Ok(())
+}
+
+pub fn merge_grouped_nodes(viz: &mut Visualization) {
+    fn merge(nodes: &mut Vec<VizNode>) {
+        for node in nodes.iter_mut() {
+            merge(&mut node.children);
+        }
+        let mut merged: Vec<VizNode> = Vec::with_capacity(nodes.len());
+        for node in nodes.drain(..) {
+            let can_merge = node.group_id.is_some()
+                && merged
+                    .last()
+                    .is_some_and(|previous| previous.group_id == node.group_id);
+            if can_merge {
+                let previous = merged.last_mut().expect("previous node exists");
+                if let (Some(previous_source), Some(source)) =
+                    (previous.source.as_mut(), node.source.as_ref())
+                {
+                    previous_source.start_line = previous_source.start_line.min(source.start_line);
+                    previous_source.end_line = previous_source.end_line.max(source.end_line);
+                }
+                previous.coverage_ids.extend(node.coverage_ids);
+                previous.children.extend(node.children);
+                previous.group_id = None;
+            } else {
+                merged.push(node);
+            }
+        }
+        *nodes = merged;
+    }
+    merge(&mut viz.nodes);
 }
 pub fn from_entities(file: &str, _source: &str, model: &UnifiedCodeModel) -> Visualization {
     let by_id: HashMap<&str, &Entity> = model.entities.iter().map(|e| (e.id.as_str(), e)).collect();
@@ -329,6 +391,8 @@ pub fn from_entities(file: &str, _source: &str, model: &UnifiedCodeModel) -> Vis
         symbol: String::new(),
         callee: String::new(),
         condition: String::new(),
+        code: String::new(),
+        coverage: false,
         source: crate::ucm::SourceRange {
             file: file.to_string(),
             start_line: 1,
@@ -379,10 +443,13 @@ fn build_node<'a>(
         _ => NodeKind::Action,
     };
 
-    let label = if entity.label.is_empty() {
-        humanize(&entity.name, entity.kind.as_str())
+    // Build label and summary from the analyzer entity so that blocks always
+    // show their real expression, even when LLM labels are unavailable.
+    let (label, summary) = build_label_and_summary(&kind, entity);
+    let coverage_ids = if entity.coverage {
+        vec![entity.id.clone()]
     } else {
-        entity.label.clone()
+        vec![]
     };
 
     let mut node = VizNode {
@@ -401,7 +468,9 @@ fn build_node<'a>(
         } else {
             Some(entity.symbol.clone())
         },
-        summary: None,
+        summary,
+        coverage_ids,
+        group_id: None,
         tests: None,
         confidence: None,
         children,
@@ -412,18 +481,58 @@ fn build_node<'a>(
         cross_refs: vec![],
     };
 
-    // For decision nodes, attach condition as summary if present.
-    if kind == NodeKind::Decision && !entity.condition.is_empty() {
-        node.summary = Some(entity.condition.clone());
-    }
-
     // For call nodes, attach callee as summary and symbol for cross-file navigation.
     if kind == NodeKind::Call && !entity.callee.is_empty() {
-        node.summary = Some(format!("→ {}", entity.callee));
+        if node.summary.is_none() {
+            node.summary = Some(format!("→ {}", entity.callee));
+        }
         node.symbol = Some(entity.callee.clone());
     }
 
     node
+}
+
+fn build_label_and_summary(kind: &NodeKind, entity: &Entity) -> (String, Option<String>) {
+    // Prefer analyzer-provided labels if they were set explicitly.
+    if !entity.label.is_empty() {
+        return (entity.label.clone(), None);
+    }
+    match kind {
+        NodeKind::Decision => {
+            if entity.kind == "else" {
+                return ("else".to_string(), None);
+            }
+            let condition = entity.condition.trim();
+            if condition.is_empty() {
+                return (humanize("", "if"), None);
+            }
+            (format!("if {condition}"), Some(condition.to_string()))
+        }
+        NodeKind::Loop => {
+            let condition = entity.condition.trim();
+            let label = match entity.name.as_str() {
+                "range" if !condition.is_empty() => format!("range {condition}"),
+                "for" if !condition.is_empty() => format!("for {condition}"),
+                "range" => "range".to_string(),
+                _ => "for".to_string(),
+            };
+            let summary = if condition.is_empty() {
+                None
+            } else {
+                Some(condition.to_string())
+            };
+            (label, summary)
+        }
+        NodeKind::Output => {
+            let condition = entity.condition.trim();
+            if !condition.is_empty() {
+                return (format!("return {condition}"), Some(condition.to_string()));
+            }
+            (humanize("", "return"), None)
+        }
+        NodeKind::Call => (humanize(&entity.name, "call"), None),
+        _ => (humanize(&entity.name, entity.kind.as_str()), None),
+    }
 }
 
 fn layer_for(kind: &str) -> Layer {
@@ -477,5 +586,114 @@ mod tests {
     fn extract_json_returns_empty_when_no_braces() {
         let raw = "no json here";
         assert_eq!(extract_json(raw), "");
+    }
+
+    fn entity(kind: &str, name: &str, condition: &str, callee: &str) -> Entity {
+        Entity {
+            id: format!("{kind}:file.go:1"),
+            kind: kind.to_string(),
+            name: name.to_string(),
+            label: String::new(),
+            symbol: String::new(),
+            callee: callee.to_string(),
+            condition: condition.to_string(),
+            code: String::new(),
+            coverage: false,
+            source: crate::ucm::SourceRange {
+                file: "file.go".to_string(),
+                start_line: 1,
+                end_line: 1,
+            },
+            parent_id: String::new(),
+            children: Vec::new(),
+        }
+    }
+
+    fn strict_viz() -> Visualization {
+        let node = |id: &str| VizNode {
+            id: id.to_string(),
+            kind: NodeKind::Action,
+            label: id.to_string(),
+            layer: Layer::Flow,
+            source: Some(SourceRef {
+                file: "file.go".to_string(),
+                start_line: if id == "a" { 1 } else { 2 },
+                end_line: if id == "a" { 1 } else { 2 },
+            }),
+            element_type: None,
+            symbol: None,
+            summary: None,
+            coverage_ids: vec![id.to_string()],
+            group_id: None,
+            tests: None,
+            confidence: None,
+            children: vec![],
+            branches: vec![],
+            data_in: vec![],
+            data_out: vec![],
+            effects: vec![],
+            cross_refs: vec![],
+        };
+        Visualization {
+            title: "test".to_string(),
+            level: crate::dsl::Level::Function,
+            nodes: vec![node("a"), node("b")],
+            edges: vec![],
+        }
+    }
+
+    #[test]
+    fn strict_labels_reject_missing_item() {
+        let mut viz = strict_viz();
+        let result = apply_labels_strict(
+            &mut viz,
+            r#"{"labels":{"a":{"label":"Выполнить действие","summary":"Описание действия."}}}"#,
+            &["a".to_string(), "b".to_string()],
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn strict_labels_merge_adjacent_items() {
+        let mut viz = strict_viz();
+        let result = apply_labels_strict(
+            &mut viz,
+            r#"{"labels":{"a":{"label":"Подготовить данные","summary":"Подготовить входные данные.","group_id":"prepare"},"b":{"label":"Проверить данные","summary":"Проверить входные данные.","group_id":"prepare"}}}"#,
+            &["a".to_string(), "b".to_string()],
+        );
+        assert!(result.is_ok());
+        merge_grouped_nodes(&mut viz);
+        assert_eq!(viz.nodes.len(), 1);
+        assert_eq!(viz.nodes[0].coverage_ids, vec!["a", "b"]);
+    }
+
+    #[test]
+    fn decision_label_includes_condition() {
+        let ent = entity("if", "if", "x > 0", "");
+        let (label, summary) = build_label_and_summary(&NodeKind::Decision, &ent);
+        assert_eq!(label, "if x > 0");
+        assert_eq!(summary.as_deref(), Some("x > 0"));
+    }
+
+    #[test]
+    fn else_label_falls_back() {
+        let ent = entity("else", "else", "", "");
+        let (label, _) = build_label_and_summary(&NodeKind::Decision, &ent);
+        assert_eq!(label, "else");
+    }
+
+    #[test]
+    fn loop_label_keeps_range_expression() {
+        let ent = entity("loop", "range", "items", "");
+        let (label, summary) = build_label_and_summary(&NodeKind::Loop, &ent);
+        assert_eq!(label, "range items");
+        assert_eq!(summary.as_deref(), Some("items"));
+    }
+
+    #[test]
+    fn loop_label_keeps_for_expression() {
+        let ent = entity("loop", "for", "i < n", "");
+        let (label, _) = build_label_and_summary(&NodeKind::Loop, &ent);
+        assert_eq!(label, "for i < n");
     }
 }

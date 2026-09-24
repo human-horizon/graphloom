@@ -1,6 +1,6 @@
 import { For, Show, createEffect, createMemo, createSignal, onMount } from "solid-js";
 import { Dynamic } from "solid-js/web";
-import { Check, ChevronDown, ChevronRight, FileCode2, FileJson, FileType, Folder, FolderOpen, Map, Network, Play, RefreshCw, X } from "lucide-solid";
+import { ArrowLeft, Check, ChevronDown, ChevronRight, FileCode2, FileJson, FileType, Folder, FolderOpen, Map, Network, Play, RefreshCw, X } from "lucide-solid";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   analyzeFunction,
@@ -30,6 +30,7 @@ const KINDS: { kind: TestKind; label: string }[] = [
 ];
 
 type FileTreeNode = { name: string; path: string; directory: boolean; language?: string; children: FileTreeNode[] };
+type NavigationEntry = { file: string | null; symbol: string; html: string };
 
 function buildFileTree(files: FileInfo[]): FileTreeNode[] {
   const root: FileTreeNode[] = [];
@@ -58,16 +59,26 @@ function iconForFile(node: FileTreeNode) {
   return FileJson;
 }
 
+function statusLabel(status: string) {
+  switch (status) {
+    case "ready": return "Готов";
+    case "analyzing": return "Анализируется…";
+    case "error": return "Ошибка";
+    default: return "Ожидает";
+  }
+}
+
 function FileTreeBranch(props: { nodes: FileTreeNode[]; expanded: Set<string>; selected: string | null; statuses: Record<string, UpdateFile>; toggle: (path: string) => void; select: (node: FileTreeNode) => void }) {
   return <For each={props.nodes}>{(node) => {
     const Icon = iconForFile(node);
     const isExpanded = () => props.expanded.has(node.path);
+    const status = () => props.statuses[node.path];
     return <div class="file-tree-branch">
       <button class={`file-tree-row ${props.selected === node.path ? "is-selected" : ""}`} onClick={() => node.directory ? props.toggle(node.path) : props.select(node)}>
         <span class="file-tree-chevron">{node.directory ? (isExpanded() ? <ChevronDown size={13} /> : <ChevronRight size={13} />) : null}</span>
         <Dynamic component={Icon} size={15} strokeWidth={1.7} />
         <span>{node.name}</span>
-        <Show when={!node.directory && props.statuses[node.path]}>{(item) => <span class={`file-tree-status status-${item().status}`} title={item().error ?? item().status} />}</Show>
+        <Show when={!node.directory && status()} keyed>{(item) => item.status === "pending" ? null : <span class={`file-tree-status status-${item.status}`} title={item.error ? `Ошибка: ${item.error}` : statusLabel(item.status)} />}</Show>
       </button>
       <Show when={node.directory && isExpanded()}><div class="file-tree-children"><FileTreeBranch nodes={node.children} expanded={props.expanded} selected={props.selected} statuses={props.statuses} toggle={props.toggle} select={props.select} /></div></Show>
     </div>;
@@ -83,6 +94,7 @@ export default function Reports() {
   const [updateProgress, setUpdateProgress] = createSignal<{ completed: number; total: number; current: string | null } | null>(null);
 
   const [currentHtml, setCurrentHtml] = createSignal<string | null>(null);
+  const [navigationHistory, setNavigationHistory] = createSignal<NavigationEntry[]>([]);
   const [analyzing, setAnalyzing] = createSignal(false);
   const [message, setMessage] = createSignal<{ ok: boolean; text: string } | null>(null);
   const [testCommands, setTestCommands] = createSignal<TestCommands | null>(null);
@@ -94,18 +106,56 @@ export default function Reports() {
   const tree = createMemo(() => buildFileTree(files()));
   const visibleSymbols = createMemo(() => symbols().filter((symbol) => !selectedFile() || symbol.file === selectedFile()));
 
+  const rememberCurrentReport = () => {
+    const html = currentHtml();
+    if (!html) return;
+    const entry: NavigationEntry = { file: selectedFile(), symbol: selectedSymbol(), html };
+    setNavigationHistory((history) => {
+      const last = history[history.length - 1];
+      if (last?.file === entry.file && last.symbol === entry.symbol && last.html === entry.html) return history;
+      return [...history, entry];
+    });
+  };
+
+  const goBack = () => {
+    const history = navigationHistory();
+    const previous = history[history.length - 1];
+    if (!previous) return;
+    setNavigationHistory(history.slice(0, -1));
+    setSelectedFile(previous.file);
+    setSelectedSymbol(previous.symbol);
+    setCurrentHtml(previous.html);
+    setMessage({ ok: true, text: "Вернулись к предыдущей схеме" });
+  };
+
   const refresh = async (path: string) => {
-    setFiles(await getFileTree(path));
-    const plan = await getUpdatePlan(path);
-    setFileStatuses(Object.fromEntries(plan.files.map((file) => [file.path, file])));
-    for (const file of plan.files) {
-      if (file.status === "ready") {
-        try {
-          await rerenderReport(path, file.path);
-        } catch (error) {
-          console.warn(`rerender ${file.path} failed`, error);
+    const discoveredFiles = await getFileTree(path);
+    setFiles(discoveredFiles);
+    try {
+      const plan = await getUpdatePlan(path);
+      setFileStatuses(Object.fromEntries(plan.files.map((file) => [file.path, file])));
+      for (const file of plan.files) {
+        if ((file.status === "ready" || file.status === "error") && file.reportPath) {
+          try {
+            await rerenderReport(path, file.path);
+          } catch (error) {
+            console.warn(`rerender ${file.path} failed`, error);
+          }
         }
       }
+    } catch (error) {
+      const analysisError = String(error);
+      const fallbackStatuses: Record<string, UpdateFile> = Object.fromEntries(
+        discoveredFiles.map((file) => [file.path, {
+          path: file.path,
+          hash: "",
+          status: "error" as const,
+          reportPath: null,
+          error: analysisError,
+        }])
+      );
+      setFileStatuses(fallbackStatuses);
+      setMessage({ ok: false, text: `Не удалось построить модель: ${analysisError}` });
     }
     setTestCommands(await detectTestCommands(path));
     try {
@@ -126,6 +176,7 @@ export default function Reports() {
     setSelectedFile(null);
     setSelectedSymbol("");
     setCurrentHtml(null);
+    setNavigationHistory([]);
     setMessage(null);
     setTestResults({});
     await refresh(selected);
@@ -138,16 +189,16 @@ export default function Reports() {
     setMessage(null);
     try {
       const plan = await getUpdatePlan(path);
-      const pending = plan.files.filter((file) => file.status === "pending");
-      if (!pending.length) {
+      const todo = plan.files.filter((file) => file.status === "pending" || (file.status === "error" && !file.reportPath));
+      if (!todo.length) {
         setMessage({ ok: true, text: `Всё актуально · ${plan.cached} файлов из кэша` });
         return;
       }
       let completed = 0;
-      setUpdateProgress({ completed, total: pending.length, current: pending[0].path });
-      for (const file of pending) {
+      setUpdateProgress({ completed, total: todo.length, current: todo[0].path });
+      for (const file of todo) {
         setFileStatuses((current) => ({ ...current, [file.path]: { ...file, status: "analyzing", error: null } }));
-        setUpdateProgress({ completed, total: pending.length, current: file.path });
+        setUpdateProgress({ completed, total: todo.length, current: file.path });
         try {
           const result = await updateFile(path, file.path, file.hash);
           const ready = { ...file, status: "ready" as const, reportPath: result.reportPath, error: null };
@@ -160,10 +211,10 @@ export default function Reports() {
           setFileStatuses((current) => ({ ...current, [file.path]: { ...file, status: "error", error: String(error) } }));
         }
         completed += 1;
-        setUpdateProgress({ completed, total: pending.length, current: completed < pending.length ? pending[completed].path : null });
+        setUpdateProgress({ completed, total: todo.length, current: completed < todo.length ? todo[completed].path : null });
       }
       const failed = Object.values(fileStatuses()).filter((file) => file.status === "error").length;
-      setMessage({ ok: failed === 0, text: failed ? `Готово · ошибок: ${failed}` : `Готово · обновлено файлов: ${pending.length}` });
+      setMessage({ ok: failed === 0, text: failed ? `Готово · ошибок: ${failed}` : `Готово · обновлено файлов: ${todo.length}` });
     } catch (error) {
       setMessage({ ok: false, text: String(error) });
     } finally {
@@ -181,7 +232,8 @@ export default function Reports() {
         const symbol = symbols().find((s) => s.id === symbolId);
         const filePath = typeof data.file === "string" ? data.file : symbol?.file;
         if (filePath) {
-          await selectFile({ name: filePath.split("/").pop() ?? filePath, path: filePath, directory: false, children: [] });
+          rememberCurrentReport();
+          await selectFile({ name: filePath.split("/").pop() ?? filePath, path: filePath, directory: false, children: [] }, true);
           if (symbol) {
             setSelectedSymbol(symbol.id);
             try {
@@ -202,16 +254,35 @@ export default function Reports() {
     return () => window.removeEventListener("message", handler);
   });
 
-  const selectFile = async (node: FileTreeNode) => {
+  const selectFile = async (node: FileTreeNode, preserveHistory = false) => {
+    if (!preserveHistory) setNavigationHistory([]);
     setSelectedFile(node.path);
     const first = symbols().find((symbol) => symbol.file === node.path);
     setSelectedSymbol(first?.id ?? "");
     const cached = fileStatuses()[node.path];
-    if (cached?.status === "ready" && cached.reportPath) {
-      setCurrentHtml(await readReport(cached.reportPath));
-      setMessage(null);
+    if (cached?.status === "error") {
+      setMessage({ ok: false, text: cached.error ?? "Ошибка генерации отчёта" });
+      if (cached.reportPath) {
+        try {
+          setCurrentHtml(await readReport(cached.reportPath));
+        } catch (error) {
+          setMessage({ ok: false, text: `Не удалось прочитать error report: ${error}` });
+          setCurrentHtml(null);
+        }
+      } else {
+        setCurrentHtml(null);
+      }
+    } else if (cached?.status === "ready" && cached.reportPath) {
+      try {
+        setCurrentHtml(await readReport(cached.reportPath));
+        setMessage(null);
+      } catch (error) {
+        setMessage({ ok: false, text: `Не удалось прочитать отчёт: ${error}` });
+        setCurrentHtml(null);
+      }
     } else {
-      setMessage({ ok: false, text: "Файл ожидает генерации. Нажмите Update." });
+      setMessage({ ok: true, text: "Файл ожидает генерации. Нажмите Update." });
+      setCurrentHtml(null);
     }
   };
 
@@ -239,6 +310,7 @@ export default function Reports() {
 
   const analyzeProjectMap = async () => {
     const path = projectPath();
+    setNavigationHistory([]);
     if (!path) return;
     setAnalyzing(true);
     setMessage({ ok: true, text: "Генерирую project map…" });
@@ -258,6 +330,7 @@ export default function Reports() {
 
   const analyzeFn = async () => {
     const path = projectPath();
+    setNavigationHistory([]);
     const symbolId = selectedSymbol();
     if (!path || !symbolId) return;
     setAnalyzing(true);
@@ -307,7 +380,7 @@ export default function Reports() {
   };
 
   return (
-    <div>
+    <div class="reports-page">
       <Show when={!projectPath()}>
         <section class="page-hero">
           <div>
@@ -349,6 +422,7 @@ export default function Reports() {
           <>
             <div class="project-toolbar">
               <div class="project-path" title={path()}>{path()}</div>
+              <button class="action-btn secondary" disabled={!navigationHistory().length || analyzing()} onClick={goBack}><ArrowLeft size={15} /> Назад</button>
               <button class="action-btn" disabled={analyzing()} onClick={updateAll}>{analyzing() ? "Обновляю…" : <><RefreshCw size={15} /> Update</>}</button>
               <button class="action-btn secondary" disabled={analyzing()} onClick={analyzeProjectMap}><Map size={15} /> Project map</button>
               <select class="symbol-select" value={selectedSymbol()} onChange={(event) => setSelectedSymbol(event.currentTarget.value)}>
@@ -358,13 +432,20 @@ export default function Reports() {
               <button class="action-btn secondary" disabled={analyzing()} onClick={rebuild}>Rescan</button>
             </div>
 
-            <Show when={message()}>{(status) => <div class={`status-message ${status().ok ? "" : "error"}`}>{status().ok ? "● Готово · " : "× "}{status().text}</div>}</Show>
+            <div class="reports-context">
+              <Show when={message()}>{(status) => <div class={`status-message ${status().ok ? "" : "error"}`}>{status().ok ? "● Готово · " : "× "}{status().text}</div>}</Show>
+              <div class="dashboard-header"><h2>{path().split("/").pop() || "Project"}</h2><span>{symbols().length ? `${symbols().length} доступных функций` : "Модель ещё не собрана"}</span></div>
+            </div>
             <Show when={updateProgress()}>{(progress) => <div class="update-progress"><div class="update-progress-top"><strong>Update</strong><span>{progress().completed} / {progress().total}</span></div><div class="update-progress-track"><span style={{ width: `${progress().total ? (progress().completed / progress().total) * 100 : 0}%` }} /></div><small>{progress().current ? `Анализируется · ${progress().current}` : "Завершение очереди…"}</small></div>}</Show>
-
-            <div class="dashboard-header"><h2>{path().split("/").pop() || "Project"}</h2><span>{symbols().length ? `${symbols().length} доступных функций` : "Модель ещё не собрана"}</span></div>
             <div class="report-layout">
               <aside class="file-tree-panel">
                 <div class="file-tree-heading"><span>Project files</span><small>{files().length} files</small></div>
+                <div class="file-tree-legend">
+                  <span class="legend-dot status-ready" />Готов
+                  <span class="legend-dot status-pending" />Ожидает
+                  <span class="legend-dot status-analyzing" />Анализ
+                  <span class="legend-dot status-error" />Ошибка
+                </div>
                 <Show when={files().length} fallback={<div class="file-tree-empty">Выберите папку проекта</div>}>
                   <div class="file-tree"><FileTreeBranch nodes={tree()} expanded={expandedDirs()} selected={selectedFile()} statuses={fileStatuses()} toggle={toggleDirectory} select={selectFile} /></div>
                 </Show>

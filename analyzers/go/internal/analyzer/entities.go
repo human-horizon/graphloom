@@ -1,8 +1,10 @@
 package analyzer
 
 import (
+	"bytes"
 	"fmt"
 	"go/ast"
+	"go/format"
 	"go/token"
 	"go/types"
 	"os"
@@ -141,28 +143,34 @@ func walkStmt(
 ) {
 	switch s := stmt.(type) {
 	case *ast.ExprStmt:
+		statementID := addStatementEntity(pkg, root, filePath, relPath, parentID, s, entities)
 		var calls []*ast.CallExpr
 		findCalls(s.X, &calls)
 		for _, call := range calls {
-			addCallEntity(pkg, root, filePath, relPath, parentID, call, entities, projectIDs)
+			addCallEntity(pkg, root, filePath, relPath, statementID, call, entities, projectIDs)
 		}
 	case *ast.AssignStmt:
+		statementID := addStatementEntity(pkg, root, filePath, relPath, parentID, s, entities)
 		var calls []*ast.CallExpr
 		for _, expr := range s.Rhs {
 			findCalls(expr, &calls)
 		}
 		for _, call := range calls {
-			addCallEntity(pkg, root, filePath, relPath, parentID, call, entities, projectIDs)
+			addCallEntity(pkg, root, filePath, relPath, statementID, call, entities, projectIDs)
 		}
+	default:
+		addStatementEntity(pkg, root, filePath, relPath, parentID, stmt, entities)
 	case *ast.IfStmt:
 		ifEntity := SemanticEntity{
-			ID:         entityID("if", relPath, s.Pos(), ""),
-			Kind:       "if",
-			Name:       "if",
-			Condition:  exprText(pkg.Fset, filePath, s.Cond),
-			Source:     sourceRange(pkg.Fset, root, filePath, s),
-			ParentID:   parentID,
-			Children:   []string{},
+			ID:        entityID("if", relPath, s.Pos(), ""),
+			Kind:      "if",
+			Name:      "if",
+			Condition: exprText(pkg.Fset, filePath, s.Cond),
+			Code:      nodeText(pkg.Fset, filePath, s),
+			Coverage:  true,
+			Source:    sourceRange(pkg.Fset, root, filePath, s),
+			ParentID:  parentID,
+			Children:  []string{},
 		}
 		*entities = append(*entities, ifEntity)
 		if s.Init != nil {
@@ -174,6 +182,8 @@ func walkStmt(
 				ID:       entityID("else", relPath, s.Else.Pos(), ""),
 				Kind:     "else",
 				Name:     "else",
+				Code:     nodeText(pkg.Fset, filePath, s.Else),
+				Coverage: true,
 				Source:   sourceRange(pkg.Fset, root, filePath, s.Else),
 				ParentID: ifEntity.ID,
 				Children: []string{},
@@ -183,13 +193,15 @@ func walkStmt(
 		}
 	case *ast.ForStmt:
 		loopEntity := SemanticEntity{
-			ID:         entityID("loop", relPath, s.Pos(), ""),
-			Kind:       "loop",
-			Name:       "for",
-			Condition:  exprText(pkg.Fset, filePath, s.Cond),
-			Source:     sourceRange(pkg.Fset, root, filePath, s),
-			ParentID:   parentID,
-			Children:   []string{},
+			ID:        entityID("loop", relPath, s.Pos(), ""),
+			Kind:      "loop",
+			Name:      "for",
+			Condition: exprText(pkg.Fset, filePath, s.Cond),
+			Code:      nodeText(pkg.Fset, filePath, s),
+			Coverage:  true,
+			Source:    sourceRange(pkg.Fset, root, filePath, s),
+			ParentID:  parentID,
+			Children:  []string{},
 		}
 		*entities = append(*entities, loopEntity)
 		if s.Init != nil {
@@ -201,13 +213,15 @@ func walkStmt(
 		}
 	case *ast.RangeStmt:
 		loopEntity := SemanticEntity{
-			ID:         entityID("loop", relPath, s.Pos(), ""),
-			Kind:       "loop",
-			Name:       "range",
-			Condition:  exprText(pkg.Fset, filePath, s.X),
-			Source:     sourceRange(pkg.Fset, root, filePath, s),
-			ParentID:   parentID,
-			Children:   []string{},
+			ID:        entityID("loop", relPath, s.Pos(), ""),
+			Kind:      "loop",
+			Name:      "range",
+			Condition: exprText(pkg.Fset, filePath, s.X),
+			Code:      nodeText(pkg.Fset, filePath, s),
+			Coverage:  true,
+			Source:    sourceRange(pkg.Fset, root, filePath, s),
+			ParentID:  parentID,
+			Children:  []string{},
 		}
 		*entities = append(*entities, loopEntity)
 		walkStmtList(pkg, root, filePath, relPath, loopEntity.ID, s.Body.List, entities, projectIDs, symbolsByObject)
@@ -218,18 +232,22 @@ func walkStmt(
 			ID:       entityID("return", relPath, s.Pos(), ""),
 			Kind:     "return",
 			Name:     "return",
+			Code:     nodeText(pkg.Fset, filePath, s),
+			Coverage: true,
 			Source:   sourceRange(pkg.Fset, root, filePath, s),
 			ParentID: parentID,
 		})
 	case *ast.SwitchStmt:
 		switchEntity := SemanticEntity{
-			ID:         entityID("switch", relPath, s.Pos(), ""),
-			Kind:       "switch",
-			Name:       "switch",
-			Condition:  exprText(pkg.Fset, filePath, s.Tag),
-			Source:     sourceRange(pkg.Fset, root, filePath, s),
-			ParentID:   parentID,
-			Children:   []string{},
+			ID:        entityID("switch", relPath, s.Pos(), ""),
+			Kind:      "switch",
+			Name:      "switch",
+			Condition: exprText(pkg.Fset, filePath, s.Tag),
+			Code:      nodeText(pkg.Fset, filePath, s),
+			Coverage:  true,
+			Source:    sourceRange(pkg.Fset, root, filePath, s),
+			ParentID:  parentID,
+			Children:  []string{},
 		}
 		*entities = append(*entities, switchEntity)
 		if s.Init != nil {
@@ -241,6 +259,8 @@ func walkStmt(
 					ID:       entityID("case", relPath, cc.Pos(), ""),
 					Kind:     "case",
 					Name:     "case",
+					Code:     nodeText(pkg.Fset, filePath, cc),
+					Coverage: true,
 					Source:   sourceRange(pkg.Fset, root, filePath, cc),
 					ParentID: switchEntity.ID,
 					Children: []string{},
@@ -254,6 +274,8 @@ func walkStmt(
 			ID:       entityID("switch", relPath, s.Pos(), ""),
 			Kind:     "switch",
 			Name:     "type switch",
+			Code:     nodeText(pkg.Fset, filePath, s),
+			Coverage: true,
 			Source:   sourceRange(pkg.Fset, root, filePath, s),
 			ParentID: parentID,
 			Children: []string{},
@@ -268,6 +290,8 @@ func walkStmt(
 					ID:       entityID("case", relPath, cc.Pos(), ""),
 					Kind:     "case",
 					Name:     "case",
+					Code:     nodeText(pkg.Fset, filePath, cc),
+					Coverage: true,
 					Source:   sourceRange(pkg.Fset, root, filePath, cc),
 					ParentID: switchEntity.ID,
 					Children: []string{},
@@ -277,6 +301,27 @@ func walkStmt(
 			}
 		}
 	}
+}
+
+func addStatementEntity(
+	pkg *packages.Package,
+	root string,
+	filePath string,
+	relPath string,
+	parentID string,
+	stmt ast.Stmt,
+	entities *[]SemanticEntity,
+) string {
+	id := entityID("statement", relPath, stmt.Pos(), "")
+	*entities = append(*entities, SemanticEntity{
+		ID:       id,
+		Kind:     "statement",
+		Code:     nodeText(pkg.Fset, filePath, stmt),
+		Coverage: true,
+		Source:   sourceRange(pkg.Fset, root, filePath, stmt),
+		ParentID: parentID,
+	})
+	return id
 }
 
 func findCalls(expr ast.Expr, out *[]*ast.CallExpr) {
@@ -373,15 +418,23 @@ func fileEndLine(fset *token.FileSet, filePath string, file *ast.File) int {
 }
 
 func exprText(fset *token.FileSet, filePath string, expr ast.Expr) string {
-	if expr == nil {
+	return nodeText(fset, filePath, expr)
+}
+
+func nodeText(fset *token.FileSet, filePath string, node ast.Node) string {
+	if node == nil {
 		return ""
+	}
+	var formatted bytes.Buffer
+	if err := format.Node(&formatted, fset, node); err == nil {
+		return strings.TrimSpace(formatted.String())
 	}
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return ""
 	}
-	start := fset.Position(expr.Pos()).Offset
-	end := fset.Position(expr.End()).Offset
+	start := fset.Position(node.Pos()).Offset
+	end := fset.Position(node.End()).Offset
 	if start < 0 || end > len(data) || end <= start {
 		return ""
 	}

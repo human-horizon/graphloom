@@ -45,6 +45,9 @@ pub fn validate(
             &mut errors,
         );
     }
+    if viz.level != Level::Project {
+        errors.extend(coverage_errors(viz, ucm));
+    }
 
     let call_pairs: HashSet<(&str, &str)> = ucm
         .calls
@@ -230,11 +233,20 @@ fn validate_node(
     }
     if let Some(symbol) = &node.symbol {
         if !symbols.contains(symbol.as_str()) {
-            errors.push(format!(
-                "node '{}' references unknown symbol '{}'",
+            eprintln!(
+                "warning: node '{}' references unknown symbol '{}'; clearing symbol",
                 node.id, symbol
-            ));
+            );
+            node.symbol = None;
         }
+    }
+    if level != Level::Project
+        && node
+            .summary
+            .as_deref()
+            .is_none_or(|summary| summary.trim().is_empty())
+    {
+        errors.push(format!("node '{}' missing Russian summary", node.id));
     }
     if let Some(element_type) = &node.element_type {
         if !palette_types.contains(element_type.as_str()) {
@@ -265,6 +277,50 @@ fn validate_node(
             level,
             errors,
         );
+    }
+}
+
+fn coverage_errors(viz: &Visualization, ucm: &UnifiedCodeModel) -> Vec<String> {
+    let Some(root_source) = viz.nodes.first().and_then(|node| node.source.as_ref()) else {
+        return vec!["coverage: scoped visualization has no source file".to_string()];
+    };
+    let expected: HashSet<&str> = ucm
+        .entities
+        .iter()
+        .filter(|entity| {
+            entity.coverage
+                && entity.source.file == root_source.file
+                && (viz.level != Level::Function
+                    || (entity.source.start_line >= root_source.start_line
+                        && entity.source.end_line <= root_source.end_line))
+        })
+        .map(|entity| entity.id.as_str())
+        .collect();
+    let mut actual: HashMap<&str, usize> = HashMap::new();
+    collect_coverage_ids(&viz.nodes, &mut actual);
+    let mut errors = Vec::new();
+    for id in &expected {
+        match actual.get(id).copied().unwrap_or(0) {
+            0 => errors.push(format!("coverage: missing AST unit '{id}'")),
+            count => {
+                if count > 1 {
+                    errors.push(format!("coverage: AST unit '{id}' appears {count} times"));
+                }
+            }
+        }
+    }
+    for id in actual.keys().filter(|id| !expected.contains(**id)) {
+        errors.push(format!("coverage: unknown AST unit '{id}'"));
+    }
+    errors
+}
+
+fn collect_coverage_ids<'a>(nodes: &'a [VizNode], out: &mut HashMap<&'a str, usize>) {
+    for node in nodes {
+        for id in &node.coverage_ids {
+            *out.entry(id.as_str()).or_default() += 1;
+        }
+        collect_coverage_ids(&node.children, out);
     }
 }
 
@@ -324,6 +380,7 @@ mod tests {
             calls: vec![],
             effects: vec![],
             entities: vec![],
+            errors: vec![],
         }
     }
 
@@ -337,6 +394,8 @@ mod tests {
             element_type: None,
             symbol: None,
             summary: None,
+            coverage_ids: vec![],
+            group_id: None,
             tests: None,
             confidence: None,
             children: vec![],
@@ -364,6 +423,51 @@ mod tests {
             label: None,
             status: Some(status),
         }
+    }
+
+    #[test]
+    fn rejects_missing_coverage_unit() {
+        let mut scoped = node("scope");
+        scoped.source = Some(SourceRef {
+            file: "main.go".to_string(),
+            start_line: 10,
+            end_line: 20,
+        });
+        scoped.summary = Some("Описание области выполнения.".to_string());
+        let model = ucm();
+        let mut model = model;
+        model.entities.push(crate::ucm::Entity {
+            id: "statement:main.go:10".to_string(),
+            kind: "statement".to_string(),
+            name: String::new(),
+            label: String::new(),
+            symbol: String::new(),
+            callee: String::new(),
+            condition: String::new(),
+            code: "value := load()".to_string(),
+            coverage: true,
+            source: SourceRange {
+                file: "main.go".to_string(),
+                start_line: 10,
+                end_line: 10,
+            },
+            parent_id: String::new(),
+            children: vec![],
+        });
+        let result = validate(
+            &mut Visualization {
+                title: "test".to_string(),
+                level: Level::Function,
+                nodes: vec![scoped],
+                edges: vec![],
+            },
+            &model,
+            &palette(),
+        );
+        assert!(result
+            .expect_err("missing coverage must be rejected")
+            .iter()
+            .any(|error| error.contains("missing AST unit")));
     }
 
     #[test]
@@ -399,12 +503,12 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unknown_symbol() {
+    fn clears_unknown_symbol() {
         let mut n = node("a");
         n.symbol = Some("fake.Symbol".to_string());
         let mut v = viz(vec![n], vec![]);
-        let err = validate(&mut v, &ucm(), &palette()).unwrap_err();
-        assert!(err.iter().any(|e| e.contains("unknown symbol")));
+        validate(&mut v, &ucm(), &palette()).unwrap();
+        assert!(v.nodes[0].symbol.is_none());
     }
 
     #[test]

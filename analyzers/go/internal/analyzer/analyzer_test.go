@@ -58,6 +58,23 @@ func TestAnalyzeFixtureBuildsUnifiedCodeModel(t *testing.T) {
 	}
 }
 
+func TestParseErrorPosition(t *testing.T) {
+	tests := []struct {
+		position string
+		file     string
+		line     int
+	}{
+		{position: "/project/internal/js/dom_api.go:7:37", file: "/project/internal/js/dom_api.go", line: 7},
+		{position: "dom.go:118", file: "dom.go", line: 118},
+	}
+	for _, test := range tests {
+		file, line := parseErrorPosition(test.position)
+		if file != test.file || line != test.line {
+			t.Fatalf("parseErrorPosition(%q): got %q:%d, want %q:%d", test.position, file, line, test.file, test.line)
+		}
+	}
+}
+
 func findSymbol(model UnifiedCodeModel, id string) *Symbol {
 	for index := range model.Symbols {
 		if model.Symbols[index].ID == id {

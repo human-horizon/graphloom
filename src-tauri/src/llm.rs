@@ -125,6 +125,16 @@ pub fn function_flow_prompt(palette: &[ElementType]) -> String {
     render_template(FUNCTION_FLOW_TEMPLATE, palette)
 }
 
-pub fn entity_labels_prompt(_palette: &[ElementType], tree_json: &str) -> String {
-    ENTITY_LABELS_TEMPLATE.replace("__TREE__", tree_json)
+pub fn entity_labels_prompt(
+    _palette: &[ElementType],
+    tree_json: &str,
+    source_window: &str,
+    done_ids: &str,
+    window_ids: &str,
+) -> String {
+    ENTITY_LABELS_TEMPLATE
+        .replace("__SOURCE__", source_window)
+        .replace("__DONE__", done_ids)
+        .replace("__WINDOW__", window_ids)
+        .replace("__TREE__", tree_json)
 }

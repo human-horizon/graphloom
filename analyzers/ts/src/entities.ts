@@ -22,6 +22,8 @@ export interface EntityModel {
     symbol?: string
     callee?: string
     condition?: string
+    code?: string
+    coverage?: boolean
     source: SourceRange
     parent_id?: string
     children?: string[]
@@ -166,10 +168,12 @@ function walkStatement(
             id,
             kind: "if",
             condition: statement.getExpression().getText(),
+            code: statement.getText(),
+            coverage: true,
             source: sourceRange(statement, directory),
             parent_id: parentId
         })
-        walkBody(statement.getThenStatement().asKind(SyntaxKind.Block), id, file, entities, declarations, directory)
+        walkNestedStatement(statement.getThenStatement(), id, file, entities, declarations, directory)
         const elseStatement = statement.getElseStatement()
         if (elseStatement) {
             if (Node.isIfStatement(elseStatement)) {
@@ -179,6 +183,8 @@ function walkStatement(
                 entities.push({
                     id: elseId,
                     kind: "else",
+                    code: elseStatement.getText(),
+                    coverage: true,
                     source: sourceRange(elseStatement, directory),
                     parent_id: id
                 })
@@ -191,6 +197,8 @@ function walkStatement(
             id,
             kind: "switch",
             condition: statement.getExpression().getText(),
+            code: statement.getText(),
+            coverage: true,
             source: sourceRange(statement, directory),
             parent_id: parentId
         })
@@ -200,6 +208,8 @@ function walkStatement(
                 id: caseId,
                 kind: "case",
                 condition: Node.isCaseClause(clause) ? clause.getExpression().getText() : "default",
+                code: clause.getText(),
+                coverage: true,
                 source: sourceRange(clause, directory),
                 parent_id: id
             })
@@ -219,34 +229,40 @@ function walkStatement(
             id,
             kind: "loop",
             condition: extractLoopCondition(statement),
+            code: statement.getText(),
+            coverage: true,
             source: sourceRange(statement, directory),
             parent_id: parentId
         })
-        walkBody(statement.getFirstChildByKind(SyntaxKind.Block), id, file, entities, declarations, directory)
+        walkNestedStatement(statement.getStatement(), id, file, entities, declarations, directory)
     } else if (Node.isReturnStatement(statement)) {
         entities.push({
             id: entityId("return", file, statement.getStartLineNumber()),
             kind: "return",
+            code: statement.getText(),
+            coverage: true,
             source: sourceRange(statement, directory),
             parent_id: parentId
         })
     } else if (Node.isExpressionStatement(statement)) {
+        const statementId = addStatementEntity(statement, parentId, file, entities, directory)
         const expr = statement.getExpression()
         if (Node.isCallExpression(expr)) {
-            addCallEntity(expr, parentId, file, entities, declarations, directory)
+            addCallEntity(expr, statementId, file, entities, declarations, directory)
         } else if (Node.isAwaitExpression(expr)) {
             const awaited = expr.getExpression()
             if (Node.isCallExpression(awaited)) {
-                addCallEntity(awaited, parentId, file, entities, declarations, directory)
+                addCallEntity(awaited, statementId, file, entities, declarations, directory)
             }
         }
     } else if (Node.isVariableStatement(statement)) {
+        const statementId = addStatementEntity(statement, parentId, file, entities, directory)
         for (const declaration of statement.getDeclarations()) {
             const initializer = declaration.getInitializer()
             if (initializer && (Node.isCallExpression(initializer) || Node.isAwaitExpression(initializer))) {
                 const expr = Node.isAwaitExpression(initializer) ? initializer.getExpression() : initializer
                 if (Node.isCallExpression(expr)) {
-                    addCallEntity(expr, parentId, file, entities, declarations, directory)
+                    addCallEntity(expr, statementId, file, entities, declarations, directory)
                 }
             } else {
                 entities.push({
@@ -254,11 +270,52 @@ function walkStatement(
                     kind: "variable",
                     name: declaration.getName(),
                     source: sourceRange(declaration, directory),
-                    parent_id: parentId
+                    parent_id: statementId
                 })
             }
         }
+    } else {
+        addStatementEntity(statement, parentId, file, entities, directory)
     }
+}
+
+function walkNestedStatement(
+    statement: Node | undefined,
+    parentId: string,
+    file: string,
+    entities: EntityModel[],
+    declarations: Map<Node, string>,
+    directory: string
+) {
+    if (!statement) {
+        return
+    }
+    if (Node.isBlock(statement)) {
+        walkBody(statement, parentId, file, entities, declarations, directory)
+        return
+    }
+    if (Node.isStatement(statement)) {
+        walkStatement(statement, parentId, file, entities, declarations, directory)
+    }
+}
+
+function addStatementEntity(
+    statement: Statement,
+    parentId: string,
+    file: string,
+    entities: EntityModel[],
+    directory: string
+): string {
+    const id = entityId("statement", file, statement.getStartLineNumber(), String(statement.getStart()))
+    entities.push({
+        id,
+        kind: "statement",
+        code: statement.getText(),
+        coverage: true,
+        source: sourceRange(statement, directory),
+        parent_id: parentId
+    })
+    return id
 }
 
 function addCallEntity(

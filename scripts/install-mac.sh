@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+export CI=true
 
 (cd analyzers/go && go build -o graphloom-analyze .)
 (cd analyzers/ts && pnpm install --silent && pnpm run --silent build)

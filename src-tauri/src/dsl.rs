@@ -78,6 +78,10 @@ pub struct VizNode {
     #[serde(default)]
     pub summary: Option<String>,
     #[serde(default)]
+    pub coverage_ids: Vec<String>,
+    #[serde(skip)]
+    pub group_id: Option<String>,
+    #[serde(default)]
     pub tests: Option<TestCoverage>,
     #[serde(default)]
     pub confidence: Option<f64>,

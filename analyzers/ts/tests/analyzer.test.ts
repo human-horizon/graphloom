@@ -36,4 +36,12 @@ describe("TypeScript semantic analyzer", () => {
             detail: "query"
         }))
     })
+
+    it("emits coverage units for non-call statements", () => {
+        const units = model.entities?.filter(entity => entity.coverage) ?? []
+
+        expect(units.length).toBeGreaterThan(0)
+        expect(units.some(entity => entity.kind === "statement" && entity.code?.includes("const"))).toBe(true)
+        expect(units.every(entity => entity.source.start_line > 0 && entity.code)).toBe(true)
+    })
 })

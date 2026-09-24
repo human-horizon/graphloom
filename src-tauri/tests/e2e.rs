@@ -4,7 +4,7 @@ use graphloom_lib::settings::Settings;
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../fixtures");
 
@@ -74,6 +74,9 @@ async fn full_pipeline_against_mock_llm() {
         .expect("file analysis failed");
     assert!(file_out.report_path.exists());
     assert!(file_out.nodes >= 8);
+    let file_dsl = std::fs::read_to_string(&file_out.dsl_path).unwrap();
+    assert!(file_dsl.contains("\"coverage_ids\""));
+    assert!(!file_dsl.contains("\"summary\": null"));
 
     // Function flow
     let flow = pipeline::analyze_function(
@@ -171,4 +174,81 @@ async fn full_pipeline_against_mock_llm() {
     assert!(new_html.contains("CreateUser"));
 
     let _ = std::fs::remove_dir_all(go_sample.join(".graphloom"));
+}
+
+#[tokio::test]
+async fn partial_analysis_keeps_valid_files_and_writes_error_report() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time must be after unix epoch")
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("graphloom-partial-go-{unique}"));
+    std::fs::create_dir_all(root.join("broken")).unwrap();
+    std::fs::write(
+        root.join("go.mod"),
+        "module example.com/partial\n\ngo 1.22\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("main.go"), "package main\n\nfunc Main() {}\n").unwrap();
+    std::fs::write(
+        root.join("broken/broken.go"),
+        "package broken\n\nfunc Broken( {\n",
+    )
+    .unwrap();
+
+    let settings = mock_settings();
+    let plan = pipeline::get_update_plan(&root, &settings)
+        .await
+        .expect("partial update plan failed");
+    let valid = plan
+        .files
+        .iter()
+        .find(|file| file.path == "main.go")
+        .expect("valid file missing");
+    assert_eq!(valid.status, "pending");
+    let broken = plan
+        .files
+        .iter()
+        .find(|file| file.path == "broken/broken.go")
+        .expect("broken file missing");
+    assert_eq!(broken.status, "error");
+    assert!(broken
+        .error
+        .as_deref()
+        .unwrap_or_default()
+        .contains("broken.go"));
+
+    let error_report = pipeline::update_file(&root, &settings, &broken.path, &broken.hash)
+        .await
+        .expect("error report generation failed");
+    assert!(error_report
+        .error
+        .as_deref()
+        .unwrap_or_default()
+        .contains("broken.go"));
+    assert!(error_report.report_path.exists());
+    let dsl = std::fs::read_to_string(error_report.dsl_path).unwrap();
+    assert!(dsl.contains("Ошибка компиляции"));
+
+    let after = pipeline::get_update_plan(&root, &settings)
+        .await
+        .expect("partial cached update plan failed");
+    let after_broken = after
+        .files
+        .iter()
+        .find(|file| file.path == "broken/broken.go")
+        .expect("broken file missing after report");
+    assert_eq!(after_broken.status, "error");
+    assert!(after_broken.report_path.is_some());
+    assert_eq!(
+        after
+            .files
+            .iter()
+            .find(|file| file.path == "main.go")
+            .unwrap()
+            .status,
+        "pending"
+    );
+
+    let _ = std::fs::remove_dir_all(root);
 }

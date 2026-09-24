@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"golang.org/x/tools/go/packages"
@@ -23,6 +24,8 @@ type SemanticEntity struct {
 	Symbol    string      `json:"symbol,omitempty"`
 	Callee    string      `json:"callee,omitempty"`
 	Condition string      `json:"condition,omitempty"`
+	Code      string      `json:"code,omitempty"`
+	Coverage  bool        `json:"coverage,omitempty"`
 	Source    SourceRange `json:"source"`
 	ParentID  string      `json:"parent_id,omitempty"`
 	Children  []string    `json:"children,omitempty"`
@@ -30,12 +33,20 @@ type SemanticEntity struct {
 
 // UnifiedCodeModel is the JSON contract shared by language analyzers.
 type UnifiedCodeModel struct {
-	Language string             `json:"language"`
-	Packages []Package          `json:"packages"`
-	Symbols  []Symbol           `json:"symbols"`
-	Calls    []Call             `json:"calls"`
-	Effects  []ExternalEffect   `json:"effects"`
-	Entities []SemanticEntity   `json:"entities,omitempty"`
+	Language string           `json:"language"`
+	Packages []Package        `json:"packages"`
+	Symbols  []Symbol         `json:"symbols"`
+	Calls    []Call           `json:"calls"`
+	Effects  []ExternalEffect `json:"effects"`
+	Entities []SemanticEntity `json:"entities,omitempty"`
+	Errors   []AnalysisError  `json:"errors,omitempty"`
+}
+
+type AnalysisError struct {
+	File      string `json:"file"`
+	Message   string `json:"message"`
+	StartLine int    `json:"start_line"`
+	EndLine   int    `json:"end_line"`
 }
 
 type Package struct {
@@ -97,15 +108,17 @@ func Analyze(dir string) (UnifiedCodeModel, error) {
 	}
 
 	projectPackages := make([]*packages.Package, 0, len(loaded))
+	projectPackageCount := 0
 	for _, pkg := range loaded {
-		if len(pkg.Errors) > 0 {
-			return UnifiedCodeModel{}, packageErrors(pkg)
+		if !isProjectPackage(pkg, absDir) {
+			continue
 		}
-		if isProjectPackage(pkg, absDir) {
+		projectPackageCount++
+		if len(pkg.Errors) == 0 {
 			projectPackages = append(projectPackages, pkg)
 		}
 	}
-	if len(projectPackages) == 0 {
+	if projectPackageCount == 0 {
 		return UnifiedCodeModel{}, fmt.Errorf("no project Go packages found in %s", absDir)
 	}
 
@@ -117,17 +130,24 @@ func Analyze(dir string) (UnifiedCodeModel, error) {
 
 	model := UnifiedCodeModel{
 		Language: "go",
-		Packages: make([]Package, 0, len(projectPackages)),
+		Packages: make([]Package, 0, projectPackageCount),
 		Symbols:  make([]Symbol, 0),
 		Calls:    make([]Call, 0),
 		Effects:  make([]ExternalEffect, 0),
+		Errors:   make([]AnalysisError, 0),
+	}
+	for _, pkg := range loaded {
+		if !isProjectPackage(pkg, absDir) {
+			continue
+		}
+		model.Packages = append(model.Packages, packageModel(pkg, absDir))
+		model.Errors = append(model.Errors, packageErrors(pkg, absDir)...)
 	}
 
 	symbolsByObject := make(map[types.Object]string)
 	symbolsByID := make(map[string]struct{})
 	functions := make(map[string]ast.Node)
 	for _, pkg := range projectPackages {
-		model.Packages = append(model.Packages, packageModel(pkg, absDir))
 		collectSymbols(pkg, absDir, symbolsByObject, symbolsByID, &model, functions)
 	}
 
@@ -140,12 +160,46 @@ func Analyze(dir string) (UnifiedCodeModel, error) {
 	return model, nil
 }
 
-func packageErrors(pkg *packages.Package) error {
-	messages := make([]string, 0, len(pkg.Errors))
-	for _, packageError := range pkg.Errors {
-		messages = append(messages, packageError.Error())
+func packageErrors(pkg *packages.Package, root string) []AnalysisError {
+	fallbackFile := ""
+	if len(pkg.GoFiles) > 0 && isWithinRoot(pkg.GoFiles[0], root) {
+		fallbackFile = relativePath(root, pkg.GoFiles[0])
 	}
-	return fmt.Errorf("package %s: %s", pkg.PkgPath, strings.Join(messages, "; "))
+	errors := make([]AnalysisError, 0, len(pkg.Errors))
+	for _, packageError := range pkg.Errors {
+		file, line := parseErrorPosition(packageError.Pos)
+		if file == "" || !isWithinRoot(file, root) {
+			file = fallbackFile
+		} else {
+			file = relativePath(root, file)
+		}
+		if line < 1 {
+			line = 1
+		}
+		errors = append(errors, AnalysisError{
+			File:      file,
+			Message:   packageError.Msg,
+			StartLine: line,
+			EndLine:   line,
+		})
+	}
+	return errors
+}
+
+func parseErrorPosition(position string) (string, int) {
+	parts := strings.Split(position, ":")
+	if len(parts) < 2 {
+		return "", 0
+	}
+	lineIndex := len(parts) - 1
+	if _, err := strconv.Atoi(parts[lineIndex]); err == nil && len(parts) >= 3 {
+		lineIndex--
+	}
+	line, err := strconv.Atoi(parts[lineIndex])
+	if err != nil {
+		return "", 0
+	}
+	return strings.Join(parts[:lineIndex], ":"), line
 }
 
 func isProjectPackage(pkg *packages.Package, root string) bool {
@@ -302,10 +356,49 @@ func collectSymbols(pkg *packages.Package, root string, symbolsByObject map[type
 			return true
 		})
 	}
+
+	// For cgo packages the original cgo source file may not appear in pkg.Syntax,
+	// but its definitions are still present in pkg.TypesInfo.Defs. Ensure every
+	// project function/method is registered as a symbol so cross-file call edges
+	// do not fail validation.
+	for ident, object := range pkg.TypesInfo.Defs {
+		function, ok := object.(*types.Func)
+		if !ok || function == nil {
+			continue
+		}
+		if _, exists := symbolsByObject[function]; exists {
+			continue
+		}
+		pos := pkg.Fset.Position(ident.Pos())
+		if !isWithinRoot(pos.Filename, root) {
+			continue
+		}
+		if function.Pkg() == nil || function.Pkg().Path() != pkg.PkgPath {
+			continue
+		}
+		id := functionID(function)
+		kind := "function"
+		if function.Signature().Recv() != nil {
+			kind = "method"
+		}
+		addSymbol(Symbol{
+			ID:         id,
+			Kind:       kind,
+			Name:       function.Name(),
+			Package:    pkg.PkgPath,
+			Source:     SourceRange{File: relativePath(root, pos.Filename), StartLine: pos.Line, EndLine: pos.Line},
+			Signature:  typeString(pkg, function.Type()),
+			IsExported: function.Exported(),
+			IsAsync:    false,
+		}, function, symbolsByObject, symbolsByID, model)
+	}
 }
 
 func addSymbol(symbol Symbol, object types.Object, symbolsByObject map[types.Object]string, symbolsByID map[string]struct{}, model *UnifiedCodeModel) {
 	if _, exists := symbolsByID[symbol.ID]; exists {
+		return
+	}
+	if symbol.Name == "_" || strings.HasPrefix(symbol.Name, "_Cgo") || strings.HasPrefix(symbol.Name, "_cgo") || strings.HasPrefix(symbol.Name, "_Cfunc") || strings.HasPrefix(symbol.Name, "_Ctype") {
 		return
 	}
 	symbolsByID[symbol.ID] = struct{}{}
@@ -498,6 +591,16 @@ func sortModel(model *UnifiedCodeModel) {
 			return left.Source.File < right.Source.File
 		}
 		return left.Source.StartLine < right.Source.StartLine
+	})
+	sort.Slice(model.Errors, func(i, j int) bool {
+		left, right := model.Errors[i], model.Errors[j]
+		if left.File != right.File {
+			return left.File < right.File
+		}
+		if left.StartLine != right.StartLine {
+			return left.StartLine < right.StartLine
+		}
+		return left.Message < right.Message
 	})
 }
 

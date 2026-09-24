@@ -42,6 +42,8 @@ mod tests {
                 element_type: None,
                 symbol: None,
                 summary: None,
+                coverage_ids: vec![],
+                group_id: None,
                 tests: None,
                 confidence: None,
                 children: vec![],
@@ -69,7 +71,29 @@ mod tests {
         assert_eq!(first, second);
         assert!(first.contains("#layers { display: flex"));
         assert!(first.contains(".elabel-bg"));
+        assert!(first.contains("#stage {"));
+        assert!(first.contains("top: 36px"));
+        assert!(first.contains("overflow: auto"));
+        assert!(!first.contains("#viewport-tools"));
+        assert!(!first.contains("fitViewport"));
+        assert!(!first.contains("zoomAt"));
+        assert!(first.contains("event.metaKey"));
         assert!(first.contains("treeLayout") || first.contains("layeredLayout"));
+        assert!(first.contains("treeLayout(view.nodes, view.edges)"));
+        assert!(!first.contains("view.edges.length === 0"));
+        assert!(first.contains("scope-region"));
+        assert!(first.contains("scope-regions"));
+        assert!(first.contains("TREE_INDENT"));
+        assert!(first.contains("TREE_REGION_NESTING_GAP"));
+        assert!(first.contains("collapsedNodes"));
+        assert!(first.contains("collapse-toggle"));
+        assert!(first.contains("addStructuralEdges"));
+        assert!(first.contains("visibleAncestor"));
+        assert!(first.contains("file-description"));
+        assert!(first.contains("const isFileRoot"));
+        assert!(first.contains("header"));
+        assert!(!first.contains("<polygon"));
+        assert!(first.contains("\"nsummary\""));
     }
 
     #[test]
